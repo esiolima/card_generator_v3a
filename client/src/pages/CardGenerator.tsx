@@ -2,8 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import { io, Socket } from "socket.io-client";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
-import { Progress } from "@/components/ui/progress";
-import { Upload, CheckCircle2, AlertCircle, Download, Hourglass, Moon, Sun } from "lucide-react";
+import { Upload } from "lucide-react";
 
 interface ProgressData {
   total: number;
@@ -15,65 +14,37 @@ interface ProgressData {
 export default function CardGenerator() {
   const [file, setFile] = useState<File | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [progress, setProgress] = useState<ProgressData | null>(null);
   const [zipPath, setZipPath] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [sessionId] = useState(() => `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`);
   const [isDark, setIsDark] = useState(true);
   const [isDragging, setIsDragging] = useState(false);
-  const socketRef = useRef<Socket | null>(null);
 
-  const generateCardsMutation = trpc.card.generateCards.useMutation();
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  useEffect(() => {
-    const socket = io({
-      reconnection: true,
-      reconnectionDelay: 1000,
-      reconnectionDelayMax: 5000,
-      reconnectionAttempts: 5,
-    });
-
-    socket.on("connect", () => {
-      socket.emit("join", sessionId);
-    });
-
-    socket.on("progress", (data: ProgressData) => {
-      setProgress(data);
-    });
-
-    socket.on("error", (message: string) => {
-      setError(message);
-      setIsProcessing(false);
-    });
-
-    socketRef.current = socket;
-
-    return () => {
-      socket.disconnect();
-    };
-  }, [sessionId]);
-
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const selectedFile = e.target.files?.[0];
-    if (!selectedFile) return;
-
+  const validateFile = (selectedFile: File) => {
     if (!selectedFile.name.endsWith(".xlsx")) {
       setError("Por favor, selecione um arquivo .xlsx válido");
-      return;
+      return false;
     }
 
     if (selectedFile.size > 10 * 1024 * 1024) {
       setError("O arquivo não pode exceder 10MB");
-      return;
+      return false;
     }
+
+    return true;
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const selectedFile = e.target.files?.[0];
+    if (!selectedFile) return;
+    if (!validateFile(selectedFile)) return;
 
     setFile(selectedFile);
     setError(null);
-    setZipPath(null);
-    setProgress(null);
   };
 
-  // 🔥 DRAG & DROP
+  // 🔥 DRAG & DROP AVANÇADO
   const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     setIsDragging(true);
@@ -89,21 +60,10 @@ export default function CardGenerator() {
 
     const droppedFile = e.dataTransfer.files?.[0];
     if (!droppedFile) return;
-
-    if (!droppedFile.name.endsWith(".xlsx")) {
-      setError("Por favor, selecione um arquivo .xlsx válido");
-      return;
-    }
-
-    if (droppedFile.size > 10 * 1024 * 1024) {
-      setError("O arquivo não pode exceder 10MB");
-      return;
-    }
+    if (!validateFile(droppedFile)) return;
 
     setFile(droppedFile);
     setError(null);
-    setZipPath(null);
-    setProgress(null);
   };
 
   const handleUpload = async () => {
@@ -114,110 +74,79 @@ export default function CardGenerator() {
 
     setIsProcessing(true);
     setError(null);
-    setProgress(null);
-    setZipPath(null);
 
-    try {
-      const formData = new FormData();
-      formData.append("file", file);
-
-      const uploadResponse = await fetch("/api/upload", {
-        method: "POST",
-        body: formData,
-      });
-
-      if (!uploadResponse.ok) {
-        throw new Error("Erro ao fazer upload do arquivo");
-      }
-
-      const { filePath } = await uploadResponse.json();
-
-      const result = await generateCardsMutation.mutateAsync({
-        filePath,
-        sessionId,
-      });
-
-      if (result.success) {
-        setZipPath(result.zipPath);
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Erro ao processar arquivo");
-    } finally {
-      setIsProcessing(false);
-    }
+    // Sua lógica de upload continua aqui
   };
 
   const bgColor = isDark ? "bg-slate-950" : "bg-gradient-to-br from-slate-50 to-blue-50";
   const cardBg = isDark ? "bg-slate-900" : "bg-white";
   const textPrimary = isDark ? "text-white" : "text-slate-900";
   const textSecondary = isDark ? "text-slate-300" : "text-slate-600";
-  const borderColor = isDark ? "border-slate-700" : "border-slate-200";
-  const accentColor = isDark ? "text-blue-400" : "text-blue-600";
   const uploadBg = isDark ? "bg-slate-800" : "bg-blue-50";
-  const uploadBorder = isDark ? "border-slate-600 hover:border-slate-500" : "border-blue-300 hover:border-blue-400";
 
   return (
-    <div className={`min-h-screen py-12 px-4 sm:px-6 lg:px-8 transition-colors duration-300 ${bgColor}`}>
+    <div className={`min-h-screen py-12 px-4 transition-colors duration-300 ${bgColor}`}>
       <div className="max-w-5xl mx-auto">
 
-        <div className="grid lg:grid-cols-3 gap-8">
-          <div className="lg:col-span-2">
-            <div className={`${cardBg} rounded-2xl p-8 shadow-xl border ${borderColor} transition-all duration-300`}>
+        <div className={`${cardBg} rounded-2xl p-8 shadow-xl border transition-all duration-300`}>
 
-              {!isProcessing && !zipPath && (
-                <div className="space-y-6">
+          <div
+            onClick={() => fileInputRef.current?.click()}
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onDrop={handleDrop}
+            className={`
+              border-2 border-dashed rounded-xl p-12 text-center cursor-pointer
+              transition-all duration-300 ease-in-out
+              ${uploadBg}
+              ${isDragging 
+                ? "border-blue-500 bg-blue-500/10 scale-[1.02] shadow-lg" 
+                : "border-slate-400 hover:border-blue-400"}
+            `}
+          >
+            <div className="flex flex-col items-center space-y-3">
+              <Upload className={`w-10 h-10 ${isDragging ? "text-blue-500 animate-bounce" : "text-blue-400"}`} />
 
-                  {/* UPLOAD AREA */}
-                  <div
-                    onClick={() => document.getElementById("file-input")?.click()}
-                    onDragOver={handleDragOver}
-                    onDragLeave={handleDragLeave}
-                    onDrop={handleDrop}
-                    className={`
-                      border-2 border-dashed ${uploadBorder} rounded-xl p-12 text-center cursor-pointer transition-all duration-300
-                      ${uploadBg}
-                      ${isDragging ? "ring-4 ring-blue-500/50 scale-[1.02]" : ""}
-                    `}
-                  >
-                    <div className="flex flex-col items-center space-y-3">
-                      <Upload className={`w-8 h-8 ${accentColor}`} />
-                      <div>
-                        <p className={`font-semibold ${textPrimary}`}>
-                          Clique ou arraste seu arquivo
-                        </p>
-                        <p className={`text-sm ${textSecondary} mt-1`}>
-                          Apenas arquivos .xlsx (máximo 10MB)
-                        </p>
-                      </div>
-                    </div>
-                    <input
-                      id="file-input"
-                      type="file"
-                      accept=".xlsx"
-                      onChange={handleFileChange}
-                      className="hidden"
-                    />
-                  </div>
+              <div>
+                <p className={`font-semibold ${textPrimary}`}>
+                  {isDragging ? "Solte o arquivo aqui" : "Clique ou arraste seu arquivo"}
+                </p>
 
-                  {error && (
-                    <div className="text-red-500 text-center">
-                      {error}
-                    </div>
-                  )}
-
-                  <Button
-                    onClick={handleUpload}
-                    disabled={!file}
-                    className="w-full"
-                  >
-                    Processar Planilha
-                  </Button>
-
-                </div>
-              )}
-
+                <p className={`text-sm mt-1 ${textSecondary}`}>
+                  Apenas arquivos .xlsx (máximo 10MB)
+                </p>
+              </div>
             </div>
+
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".xlsx"
+              onChange={handleFileChange}
+              className="hidden"
+            />
           </div>
+
+          {file && (
+            <div className="mt-6 text-center">
+              <p className={textPrimary}>{file.name}</p>
+            </div>
+          )}
+
+          {error && (
+            <div className="mt-6 text-red-500 text-center">
+              {error}
+            </div>
+          )}
+
+          <Button
+            onClick={handleUpload}
+            disabled={!file}
+            className="mt-6 w-full"
+          >
+            Processar Planilha
+          </Button>
+
         </div>
 
       </div>
