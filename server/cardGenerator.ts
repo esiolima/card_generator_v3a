@@ -11,6 +11,7 @@ const OUTPUT_DIR = path.resolve("output");
 const TMP_DIR = path.resolve("tmp");
 
 interface CardData {
+  ordem?: string;
   tipo: string;
   logo: string;
   cupom?: string;
@@ -55,11 +56,9 @@ export class CardGenerator extends EventEmitter {
   private browser: Browser | null = null;
 
   async initialize() {
-    // Ensure directories exist
     if (!fs.existsSync(OUTPUT_DIR)) fs.mkdirSync(OUTPUT_DIR, { recursive: true });
     if (!fs.existsSync(TMP_DIR)) fs.mkdirSync(TMP_DIR, { recursive: true });
 
-    // Launch browser
     this.browser = await puppeteer.launch({
       args: ["--no-sandbox", "--disable-setuid-sandbox"],
       headless: true,
@@ -73,12 +72,10 @@ export class CardGenerator extends EventEmitter {
     if (!this.browser) throw new Error("Generator not initialized");
 
     try {
-      // Read Excel file
       const workbook = xlsx.readFile(excelFilePath);
       const sheet = workbook.Sheets[workbook.SheetNames[0]];
       const rows = xlsx.utils.sheet_to_json<CardData>(sheet, { defval: "" });
 
-      // Filter valid rows
       const validRows = rows.filter((row) => {
         const tipo = normalizeType(row.tipo);
         return tipo && fs.existsSync(path.join(TEMPLATES_DIR, `${tipo}.html`));
@@ -87,27 +84,23 @@ export class CardGenerator extends EventEmitter {
       const total = validRows.length;
       let processed = 0;
 
-      // Generate PDFs
       for (const row of validRows) {
         const tipo = normalizeType(row.tipo);
         const templatePath = path.join(TEMPLATES_DIR, `${tipo}.html`);
         let html = fs.readFileSync(templatePath, "utf8");
 
-        // Replace placeholders
-        // Normalize logo filename to lowercase for case-insensitive matching
+        // Logo
         let logoBase64 = "";
         if (row.logo) {
           const logoFileName = row.logo.toLowerCase();
           const logoPath = path.join(LOGOS_DIR, logoFileName);
           logoBase64 = imageToBase64(logoPath);
-          
-          // If logo not found with lowercase, try to find any matching file
+
           if (!logoBase64) {
             const files = fs.readdirSync(LOGOS_DIR);
             const matchingFile = files.find(f => f.toLowerCase() === logoFileName);
             if (matchingFile) {
-              const altLogoPath = path.join(LOGOS_DIR, matchingFile);
-              logoBase64 = imageToBase64(altLogoPath);
+              logoBase64 = imageToBase64(path.join(LOGOS_DIR, matchingFile));
             }
           }
         }
@@ -120,10 +113,38 @@ export class CardGenerator extends EventEmitter {
         html = html.replaceAll("{{UF}}", upper(row.uf));
         html = html.replaceAll("{{SEGMENTO}}", upper(row.segmento));
 
+        // 🔥 AUTO SCALE SCRIPT
+        html += `
+<script>
+function autoFitText(selector, maxFontSize) {
+  const el = document.querySelector(selector);
+  if (!el) return;
+
+  let fontSize = maxFontSize;
+  el.style.whiteSpace = "nowrap";
+  el.style.display = "flex";
+  el.style.justifyContent = "center";
+  el.style.alignItems = "center";
+  el.style.fontSize = fontSize + "px";
+
+  const parentWidth = el.parentElement.clientWidth - 20;
+
+  while (el.scrollWidth > parentWidth && fontSize > 40) {
+    fontSize -= 2;
+    el.style.fontSize = fontSize + "px";
+  }
+}
+
+window.onload = function() {
+  autoFitText(".cupom-codigo", 150);
+  autoFitText(".percentual", 420);
+};
+</script>
+`;
+
         const tmpHtmlPath = path.join(TMP_DIR, `card_${processed + 1}.html`);
         fs.writeFileSync(tmpHtmlPath, html, "utf8");
 
-        // Generate PDF
         const page = await this.browser.newPage();
         await page.setViewport({ width: 1400, height: 2115 });
 
@@ -132,9 +153,13 @@ export class CardGenerator extends EventEmitter {
           timeout: 30000,
         });
 
+        // 🔥 NOVO NOME DO PDF
+        const ordem = String(row.ordem || processed + 1).trim();
+        const tipoUpper = tipo.toUpperCase();
+
         const pdfPath = path.join(
           OUTPUT_DIR,
-          `card_${String(processed + 1).padStart(3, "0")}.pdf`
+          `${ordem}_${tipoUpper}.pdf`
         );
 
         await page.pdf({
@@ -167,13 +192,11 @@ export class CardGenerator extends EventEmitter {
         });
       }
 
-      // Create ZIP file
       const zipPath = path.join(OUTPUT_DIR, "cards.zip");
       await this.createZip(OUTPUT_DIR, zipPath);
 
       return zipPath;
     } finally {
-      // Cleanup
       this.cleanup();
     }
   }
@@ -188,12 +211,10 @@ export class CardGenerator extends EventEmitter {
 
       archive.pipe(output);
 
-      // Add all PDFs to zip
       const files = fs.readdirSync(sourceDir);
       for (const file of files) {
         if (file.endsWith(".pdf")) {
-          const filePath = path.join(sourceDir, file);
-          archive.file(filePath, { name: file });
+          archive.file(path.join(sourceDir, file), { name: file });
         }
       }
 
@@ -202,7 +223,6 @@ export class CardGenerator extends EventEmitter {
   }
 
   private cleanup() {
-    // Clean temporary HTML files
     if (fs.existsSync(TMP_DIR)) {
       const files = fs.readdirSync(TMP_DIR);
       for (const file of files) {
@@ -210,7 +230,6 @@ export class CardGenerator extends EventEmitter {
       }
     }
 
-    // Clean old PDFs from output (keep only the latest ZIP)
     if (fs.existsSync(OUTPUT_DIR)) {
       const files = fs.readdirSync(OUTPUT_DIR);
       for (const file of files) {
