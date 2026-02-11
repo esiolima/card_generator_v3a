@@ -115,8 +115,12 @@ export class CardGenerator extends EventEmitter {
         html = html.replaceAll("{{LOGO}}", logoBase64);
         html = html.replaceAll("{{TEXTO}}", upper(row.texto));
         html = html.replaceAll("{{VALOR}}", upper(row.valor));
-        html = html.replaceAll("{{CUPOM}}", cupomTexto);
-        html = html.replaceAll("{{CUPOM_FONT_SIZE}}", cupomFontSize.toString());
+
+        html = html.replace(
+          '<div class="cupom-codigo upper">{{CUPOM}}</div>',
+          `<div class="cupom-codigo upper" style="font-size:${cupomFontSize}px; white-space:nowrap; text-align:center;">${cupomTexto}</div>`
+        );
+
         html = html.replaceAll("{{LEGAL}}", upper(row.legal));
         html = html.replaceAll("{{UF}}", upper(row.uf));
         html = html.replaceAll("{{SEGMENTO}}", upper(row.segmento));
