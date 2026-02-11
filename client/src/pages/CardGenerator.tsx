@@ -193,9 +193,34 @@ export default function CardGenerator() {
 
                   {/* File Input */}
                   <div
-                    onClick={() => document.getElementById("file-input")?.click()}
-                    className={`border-2 border-dashed ${uploadBorder} rounded-xl p-12 text-center cursor-pointer transition-all duration-300 ${uploadBg}`}
-                  >
+  onClick={() => document.getElementById("file-input")?.click()}
+  onDragOver={(e) => {
+    e.preventDefault();
+  }}
+  onDrop={(e) => {
+    e.preventDefault();
+
+    const droppedFile = e.dataTransfer.files?.[0];
+    if (!droppedFile) return;
+
+    if (!droppedFile.name.endsWith(".xlsx")) {
+      setError("Por favor, selecione um arquivo .xlsx válido");
+      return;
+    }
+
+    if (droppedFile.size > 10 * 1024 * 1024) {
+      setError("O arquivo não pode exceder 10MB");
+      return;
+    }
+
+    setFile(droppedFile);
+    setError(null);
+    setZipPath(null);
+    setProgress(null);
+  }}
+  className={`border-2 border-dashed ${uploadBorder} rounded-xl p-12 text-center cursor-pointer transition-all duration-300 ${uploadBg}`}
+>
+
                     <div className="flex flex-col items-center space-y-3">
                       <div className={`p-4 rounded-full ${isDark ? "bg-blue-900/30" : "bg-blue-100"}`}>
                         <Upload className={`w-8 h-8 ${accentColor}`} />
