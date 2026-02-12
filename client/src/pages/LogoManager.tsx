@@ -16,7 +16,8 @@ export default function LogoManager() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const [isDark, setIsDark] = useState(true); // Estado do tema
+  const [isDark, setIsDark] = useState(true);
+  const [isDragging, setIsDragging] = useState(false); // NOVO ESTADO para feedback
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const { data: logosData, refetch } = trpc.logo.listLogos.useQuery();
@@ -27,34 +28,40 @@ export default function LogoManager() {
     }
   }, [logosData]);
 
-  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
+  // Função centralizada para lidar com a seleção de arquivos
+  const handleFileSelect = async (file: File | null | undefined) => {
     if (!file) return;
 
-    // ... (Lógica de validação e upload permanece a mesma)
     if (!["image/png", "image/jpeg", "image/jpg"].includes(file.type)) {
       setError("Apenas PNG, JPG e JPEG são permitidos");
       return;
     }
+
     if (file.size > 5 * 1024 * 1024) {
       setError("O arquivo não pode exceder 5MB");
       return;
     }
+
     setIsLoading(true);
     setError(null);
     setSuccess(null);
+
     try {
       const formData = new FormData();
       formData.append("logo", file);
+
       const response = await fetch("/api/upload-logo", {
         method: "POST",
         body: formData,
       });
+
       if (!response.ok) {
         throw new Error("Erro ao enviar logo");
       }
+
       setSuccess(`Logo "${file.name}" enviada com sucesso!`);
       refetch(); // Recarrega a lista de logos
+
       if (fileInputRef.current) {
         fileInputRef.current.value = "";
       }
@@ -65,7 +72,31 @@ export default function LogoManager() {
     }
   };
 
-  // --- Estilos Glassmorfismo com modo Light/Dark ---
+  // Manipulador para o input de clique
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    handleFileSelect(e.target.files?.[0]);
+  };
+
+  // --- NOVOS MANIPULADORES DE DRAG AND DROP ---
+  const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setIsDragging(false);
+  };
+
+  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setIsDragging(false);
+    if (isLoading) return;
+    const droppedFile = e.dataTransfer.files[0];
+    handleFileSelect(droppedFile);
+  };
+
+  // --- Estilos ---
   const bgColor = isDark 
     ? "bg-gradient-to-br from-gray-900 via-blue-950 to-purple-950" 
     : "bg-gradient-to-br from-slate-100 via-blue-100 to-purple-100";
@@ -77,13 +108,15 @@ export default function LogoManager() {
   const borderColor = isDark ? "border-white/20" : "border-slate-300/50";
   const accentColor = isDark ? "text-cyan-300" : "text-blue-600";
   const uploadBg = isDark ? "bg-black/20" : "bg-white/30";
-  const uploadBorder = isDark ? "border-white/30 hover:border-white/50" : "border-blue-300/80 hover:border-blue-400";
+  const uploadBorder = isDragging
+    ? (isDark ? 'border-cyan-300' : 'border-blue-600')
+    : (isDark ? "border-white/30 hover:border-white/50" : "border-blue-300/80 hover:border-blue-400");
 
   return (
     <div className={`min-h-screen w-full py-12 px-4 sm:px-6 lg:px-8 transition-colors duration-500 ${bgColor}`}>
       <div className="max-w-5xl mx-auto space-y-8">
         
-        {/* Header com Botão Voltar e Toggle */}
+        {/* ... (Header com Botão Voltar e Toggle permanece o mesmo) ... */}
         <div className="flex items-center justify-between">
           <Button
             onClick={() => navigate("/")}
@@ -116,33 +149,38 @@ export default function LogoManager() {
             Gerenciador de Logos
           </h2>
 
+          {/* --- ÁREA DE UPLOAD ATUALIZADA --- */}
           <div
             onClick={() => !isLoading && fileInputRef.current?.click()}
-            className={`border-2 border-dashed rounded-lg p-8 text-center transition-all duration-300 ${uploadBorder} ${uploadBg} ${isLoading ? 'cursor-not-allowed' : 'cursor-pointer'}`}
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onDrop={handleDrop}
+            className={`border-2 border-dashed rounded-lg p-8 text-center transition-all duration-300 ${uploadBorder} ${uploadBg} ${isLoading ? 'cursor-not-allowed opacity-70' : 'cursor-pointer'}`}
           >
-            <Upload className={`w-12 h-12 mx-auto mb-4 ${isDark ? 'text-slate-400' : 'text-slate-700'}`} />
-            <p className={`${textSecondary} mb-4`}>
-              Arraste ou clique para selecionar um arquivo
-            </p>
-
+            <div className="flex flex-col items-center space-y-3 pointer-events-none">
+              <Upload className={`w-12 h-12 mx-auto mb-4 ${isDark ? 'text-slate-400' : 'text-slate-700'}`} />
+              <p className={`${textSecondary} mb-4`}>
+                Arraste ou clique para selecionar um arquivo
+              </p>
+              <Button
+                asChild
+                disabled={isLoading}
+                className={`text-white font-semibold transition-all duration-300 ${isDark ? 'bg-cyan-500/80 hover:bg-cyan-500' : 'bg-blue-600 hover:bg-blue-700'}`}
+              >
+                <span>{isLoading ? "Enviando..." : "Selecionar Logo"}</span>
+              </Button>
+            </div>
             <input
               ref={fileInputRef}
               type="file"
               accept="image/png,image/jpeg,image/jpg"
-              onChange={handleFileSelect}
+              onChange={handleInputChange}
               className="hidden"
               disabled={isLoading}
             />
-
-            <Button
-              onClick={(e) => e.stopPropagation()} // Evita que o clique no botão acione o div pai
-              disabled={isLoading}
-              className={`text-white font-semibold transition-all duration-300 ${isDark ? 'bg-cyan-500/80 hover:bg-cyan-500' : 'bg-blue-600 hover:bg-blue-700'}`}
-            >
-              {isLoading ? "Enviando..." : "Selecionar Logo"}
-            </Button>
           </div>
 
+          {/* ... (Mensagens de erro e sucesso permanecem as mesmas) ... */}
           {error && (
             <div className={`flex items-center gap-2 p-4 mt-4 rounded-lg ${isDark ? 'bg-red-500/20 border border-red-400/50 text-red-300' : 'bg-red-500/10 border border-red-500/20 text-red-700'}`}>
               <AlertCircle className="w-5 h-5" />
@@ -158,7 +196,7 @@ export default function LogoManager() {
           )}
         </div>
 
-        {/* Logos List */}
+        {/* ... (Seção da lista de logos permanece a mesma) ... */}
         <div className={`p-8 rounded-2xl shadow-2xl ${cardBg}`}>
           <h3 className={`text-xl font-bold ${textPrimary} mb-4`}>
             Logos Disponíveis
