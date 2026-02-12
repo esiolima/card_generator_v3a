@@ -52,9 +52,31 @@ body {
   align-items: center;
   padding: 0 40px;
   overflow: hidden;
+  position: relative;
 }
 
-/* ===== LOGO (COMUM) ===== */
+/* ===== SELO (AJUSTE AUTOMÁTICO E ALINHAMENTO) ===== */
+#selo-container {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 350px; /* Largura máxima do selo */
+  height: 350px; /* Altura máxima do selo */
+  z-index: 9999;
+  display: flex;
+  align-items: flex-start; /* Alinha no topo */
+  justify-content: flex-start; /* Alinha na esquerda */
+}
+
+#selo-container img {
+  max-width: 100%;
+  max-height: 100%;
+  width: auto;
+  height: auto;
+  object-fit: contain; /* Mantém a proporção da imagem */
+}
+
+/* ===== LOGO ===== */
 .logo {
   margin-top: 90px;
   flex-shrink: 0;
@@ -117,7 +139,7 @@ body {
   flex-shrink: 0;
 }
 
-/* ===== LEGAL (COMUM) ===== */
+/* ===== LEGAL ===== */
 .legal {
   margin-top: 80px;
   max-width: 1100px;
@@ -163,7 +185,7 @@ body {
   text-align: center;
 }
 
-/* ===== RODAPÉ (COMUM) ===== */
+/* ===== RODAPÉ ===== */
 .rodape {
   margin-top: auto;
   margin-bottom: 60px;
@@ -193,27 +215,38 @@ body {
 </head>
 
 <body>
-<div class="card">
+  <div class="card">
+    <!-- CONTAINER DO SELO -->
+    <div id="selo-container">
+      <img src="{{SELO}}" id="selo-img" alt="">
+    </div>
 
-  <div class="logo">
-    <img src="{{LOGO}}" alt="Logo">
-  </div>
+    <div class="logo">
+      <img src="{{LOGO}}" alt="Logo">
+    </div>
 
-  <div class="condicao upper text-wrap">{{TEXTO}}</div>
+    <div class="condicao upper text-wrap">{{TEXTO}}</div>
 
-  <div class="percentual">
-    <div class="numero">{{VALOR}}</div>
-    <div class="percent">%</div>
-  </div>
+    <div class="percentual">
+      <div class="numero">{{VALOR}}</div>
+      <div class="percent">%</div>
+    </div>
 
-  <div class="desconto upper">DE DESCONTO</div>
+    <div class="desconto upper">DE DESCONTO</div>
 
-  <div class="legal upper text-wrap">{{LEGAL}}</div>
+    <div class="legal upper text-wrap">{{LEGAL}}</div>
 
-  <div class="cupom-box">
-    <div class="cupom-label"><span class="upper">CUPOM</span></div>
-    <div id="cupom-container" style="width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; overflow: hidden; padding: 0 20px;">
-      <div id="cupom-codigo" class="cupom-codigo upper">{{CUPOM}}</div>
+    <div class="cupom-box">
+      <div class="cupom-label"><span class="upper">CUPOM</span></div>
+      <div id="cupom-container" style="width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; overflow: hidden; padding: 0 20px;">
+        <div id="cupom-codigo" class="cupom-codigo upper">{{CUPOM}}</div>
+      </div>
+    </div>
+
+    <div class="rodape">
+      <div class="uf upper">{{UF}}</div>
+      <div class="segmento-label upper">SEGMENTO DE CLIENTES:</div>
+      <div class="segmento-valor upper">{{SEGMENTO}}</div>
     </div>
   </div>
 
@@ -221,8 +254,10 @@ body {
     function adjustFontSize() {
       const container = document.getElementById('cupom-container');
       const text = document.getElementById('cupom-codigo');
-      let fontSize = 160; // Tamanho inicial
-      const minFontSize = 40; // Tamanho mínimo
+      if (!container || !text) return;
+      
+      let fontSize = 160;
+      const minFontSize = 40;
 
       text.style.fontSize = fontSize + 'px';
 
@@ -231,19 +266,28 @@ body {
         text.style.fontSize = fontSize + 'px';
       }
     }
+
+    function checkSelo() {
+      const seloImg = document.getElementById('selo-img');
+      const seloContainer = document.getElementById('selo-container');
+      
+      const src = seloImg.getAttribute('src');
+      if (!src || src === "" || src === "{{SELO}}") {
+        seloContainer.style.display = 'none';
+      } else {
+        seloContainer.style.display = 'flex';
+      }
+    }
     
-    // Executa após o carregamento e fontes
-    window.onload = adjustFontSize;
-    // Garantia extra para fontes customizadas
-    document.fonts.ready.then(adjustFontSize);
+    window.onload = () => {
+      adjustFontSize();
+      checkSelo();
+    };
+    
+    document.fonts.ready.then(() => {
+      adjustFontSize();
+      checkSelo();
+    });
   </script>
-
-  <div class="rodape">
-    <div class="uf upper">{{UF}}</div>
-    <div class="segmento-label upper">SEGMENTO DE CLIENTES:</div>
-    <div class="segmento-valor upper">{{SEGMENTO}}</div>
-  </div>
-
-</div>
 </body>
 </html>
