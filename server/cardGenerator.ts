@@ -125,10 +125,16 @@ export class CardGenerator extends EventEmitter {
             seloFileName = "acaorenovada.png";
           }
 
+          console.log(`[Selo] Valor na planilha: "${seloValue}", Arquivo identificado: "${seloFileName}"`);
+
           if (seloFileName) {
             const seloPath = path.join(SELOS_DIR, seloFileName);
+            console.log(`[Selo] Caminho completo: ${seloPath}`);
             if (fs.existsSync(seloPath)) {
               seloBase64 = imageToBase64(seloPath);
+              console.log(`[Selo] Imagem convertida para Base64 (tamanho: ${seloBase64.length})`);
+            } else {
+              console.error(`[Selo] ERRO: Arquivo não encontrado em ${seloPath}`);
             }
           }
         }
