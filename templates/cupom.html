@@ -55,15 +55,15 @@ body {
   position: relative;
 }
 
-/* ===== SELO (REDUZIDO E ALINHADO À BORDA) ===== */
+/* ===== SELO (AJUSTADO PARA COLAR NO TOPO) ===== */
 #selo-container {
   position: absolute;
-  top: 0;
+  top: -20px; /* Valor negativo para subir e colar na linha dourada */
   left: 0;
-  width: 225px; /* Reduzido 50% (era 450px) */
-  height: 225px; /* Reduzido 50% (era 450px) */
+  width: 225px;
+  height: 225px;
   z-index: 99999;
-  display: none; /* Ativado via JS */
+  display: none;
   align-items: flex-start;
   justify-content: flex-start;
   pointer-events: none;
@@ -230,7 +230,7 @@ body {
 
     <div class="cupom-box">
       <div class="cupom-label"><span class="upper">CUPOM</span></div>
-      <div id="cupom-container" style="width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; overflow: hidden; padding: 0 20px;">
+      <div id="cupom-container" style="width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; overflow: hidden; padding: 0 60px;">
         <div id="cupom-codigo" class="cupom-codigo upper">{{CUPOM}}</div>
       </div>
     </div>
