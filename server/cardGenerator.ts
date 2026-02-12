@@ -41,7 +41,7 @@ function imageToBase64(imagePath: string): string {
 function normalizeType(tipo: string): string {
   if (!tipo) return "";
 
-  const normalized = tipo
+  let normalized = String(tipo)
     .toLowerCase()
     .trim()
     .normalize("NFD")
@@ -92,47 +92,64 @@ export class CardGenerator extends EventEmitter {
         const templatePath = path.join(TEMPLATES_DIR, `${tipo}.html`);
         let html = fs.readFileSync(templatePath, "utf8");
 
-        // ===== LOGO =====
-        let logoFile = row.logo?.trim();
+        /* =========================
+           LOGO (fallback blank.png)
+        ========================= */
 
-        if (!logoFile) {
-          logoFile = "blank.png";
+        let logoFileName = row.logo?.trim();
+
+        if (!logoFileName) {
+          logoFileName = "blank.png";
         }
 
-        const logoPath = path.join(LOGOS_DIR, logoFile.toLowerCase());
+        const logoPath = path.join(LOGOS_DIR, logoFileName);
         const logoBase64 = imageToBase64(logoPath);
 
-        // ===== VALOR =====
-        let valorFinal = "";
+        /* =========================
+           VALOR (% RULE)
+        ========================= */
 
-        if (tipo === "promocao") {
-          // PROMO mantém exatamente o que foi digitado (apenas upper)
-          valorFinal = upper(row.valor);
-        } else {
-          // CUPOM, QUEDA, BC -> sempre garantir UM único %
-          let valorLimpo = String(row.valor || "")
-            .replace(/%/g, "") // remove qualquer %
-            .trim();
+        let valorFinal = upper(row.valor);
 
-          if (valorLimpo !== "") {
-            valorFinal = `${valorLimpo}%`;
+        if (tipo === "cupom" || tipo === "queda" || tipo === "bc") {
+          if (valorFinal) {
+            // Remove todos os %
+            valorFinal = valorFinal.replace(/%+/g, "");
+
+            // Adiciona apenas um %
+            valorFinal = `${valorFinal}%`;
           }
         }
 
-        // ===== CUPOM =====
-        let cupomTexto = upper(row.cupom);
-
-        if (cupomTexto.length > 22) {
-          cupomTexto = "XXXXX";
+        if (tipo === "promocao") {
+          valorFinal = upper(row.valor);
         }
 
+        /* =========================
+           TEXTO / CUPOM
+        ========================= */
+
+        const textoFinal = upper(row.texto);
+        const cupomFinal = upper(row.cupom);
+        const legalFinal = upper(row.legal);
+        const ufFinal = upper(row.uf);
+        const segmentoFinal = upper(row.segmento);
+
+        /* =========================
+           HTML Replace
+        ========================= */
+
         html = html.replaceAll("{{LOGO}}", logoBase64);
-        html = html.replaceAll("{{TEXTO}}", upper(row.texto));
+        html = html.replaceAll("{{TEXTO}}", textoFinal);
         html = html.replaceAll("{{VALOR}}", valorFinal);
-        html = html.replaceAll("{{CUPOM}}", cupomTexto);
-        html = html.replaceAll("{{LEGAL}}", upper(row.legal));
-        html = html.replaceAll("{{UF}}", upper(row.uf));
-        html = html.replaceAll("{{SEGMENTO}}", upper(row.segmento));
+        html = html.replaceAll("{{CUPOM}}", cupomFinal);
+        html = html.replaceAll("{{LEGAL}}", legalFinal);
+        html = html.replaceAll("{{UF}}", ufFinal);
+        html = html.replaceAll("{{SEGMENTO}}", segmentoFinal);
+
+        /* =========================
+           GERAR PDF
+        ========================= */
 
         const tmpHtmlPath = path.join(TMP_DIR, `card_${processed + 1}.html`);
         fs.writeFileSync(tmpHtmlPath, html, "utf8");
@@ -162,6 +179,7 @@ export class CardGenerator extends EventEmitter {
         await page.close();
 
         processed++;
+
         const percentage = Math.round((processed / total) * 100);
 
         if (onProgress) {
@@ -213,17 +231,19 @@ export class CardGenerator extends EventEmitter {
 
   private cleanup() {
     if (fs.existsSync(TMP_DIR)) {
-      fs.readdirSync(TMP_DIR).forEach((file) =>
-        fs.unlinkSync(path.join(TMP_DIR, file))
-      );
+      const files = fs.readdirSync(TMP_DIR);
+      for (const file of files) {
+        fs.unlinkSync(path.join(TMP_DIR, file));
+      }
     }
 
     if (fs.existsSync(OUTPUT_DIR)) {
-      fs.readdirSync(OUTPUT_DIR).forEach((file) => {
+      const files = fs.readdirSync(OUTPUT_DIR);
+      for (const file of files) {
         if (file.endsWith(".pdf")) {
           fs.unlinkSync(path.join(OUTPUT_DIR, file));
         }
-      });
+      }
     }
   }
 
