@@ -55,17 +55,18 @@ body {
   position: relative;
 }
 
-/* ===== SELO (AJUSTE AUTOMÁTICO E ALINHAMENTO) ===== */
+/* ===== SELO (AJUSTADO PARA PDF) ===== */
 #selo-container {
   position: absolute;
   top: 0;
   left: 0;
-  width: 350px; /* Largura máxima do selo */
-  height: 350px; /* Altura máxima do selo */
-  z-index: 9999;
-  display: flex;
-  align-items: flex-start; /* Alinha no topo */
-  justify-content: flex-start; /* Alinha na esquerda */
+  width: 450px; /* Aumentado para maior visibilidade */
+  height: 450px;
+  z-index: 99999; /* Prioridade máxima */
+  display: none; /* Será alterado para flex via JS se houver imagem */
+  align-items: flex-start;
+  justify-content: flex-start;
+  pointer-events: none; /* Não interfere em cliques */
 }
 
 #selo-container img {
@@ -73,7 +74,7 @@ body {
   max-height: 100%;
   width: auto;
   height: auto;
-  object-fit: contain; /* Mantém a proporção da imagem */
+  object-fit: contain;
 }
 
 /* ===== LOGO ===== */
@@ -100,15 +101,6 @@ body {
 }
 
 /* ===== BENEFÍCIO ===== */
-.ganhe {
-  margin-top: 40px;
-  margin-bottom: 0;
-  font-family: Inter, sans-serif;
-  font-size: clamp(60px, 8vw, 96px);
-  font-weight: 700;
-  flex-shrink: 0;
-}
-
 .percentual {
   display: flex;
   align-items: flex-end;
@@ -272,18 +264,21 @@ body {
       const seloContainer = document.getElementById('selo-container');
       
       const src = seloImg.getAttribute('src');
-      if (!src || src === "" || src === "{{SELO}}") {
-        seloContainer.style.display = 'none';
-      } else {
+      // Verifica se o src contém dados reais (Base64)
+      if (src && src.startsWith('data:image')) {
         seloContainer.style.display = 'flex';
+      } else {
+        seloContainer.style.display = 'none';
       }
     }
     
+    // Executa as funções
     window.onload = () => {
       adjustFontSize();
       checkSelo();
     };
     
+    // Garante execução após carregamento de fontes e imagens
     document.fonts.ready.then(() => {
       adjustFontSize();
       checkSelo();
