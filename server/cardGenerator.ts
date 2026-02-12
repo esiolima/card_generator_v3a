@@ -7,7 +7,7 @@ import { EventEmitter } from "events";
 
 const TEMPLATES_DIR = path.resolve("templates");
 const LOGOS_DIR = path.resolve("logos");
-const SELOS_DIR = path.resolve("selos");
+const SELOS_DIR = path.join(process.cwd(), "selos");
 const OUTPUT_DIR = path.resolve("output");
 const TMP_DIR = path.resolve("tmp");
 
@@ -119,10 +119,10 @@ export class CardGenerator extends EventEmitter {
         
         if (seloValue) {
           let seloFileName = "";
-          if (seloValue.includes("NOVA")) {
-            seloFileName = "acaonova.png";
-          } else if (seloValue.includes("RENOVADA")) {
+          if (seloValue.includes("RENOVADA")) {
             seloFileName = "acaorenovada.png";
+          } else if (seloValue.includes("NOVA")) {
+            seloFileName = "acaonova.png";
           }
 
           console.log(`[Selo] Valor na planilha: "${seloValue}", Arquivo identificado: "${seloFileName}"`);
