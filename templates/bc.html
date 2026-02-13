@@ -28,7 +28,7 @@
 
 body {
   margin: 0;
-  background: #ffffff;
+  background: transparent;
   display: flex;
   justify-content: center;
   align-items: center;
@@ -48,10 +48,9 @@ body {
   overflow: hidden;
 }
 
-/* ===== LOGO ===== */
+/* LOGO */
 .logo {
   margin-top: 90px;
-  flex-shrink: 0;
 }
 .logo img {
   max-width: 800px;
@@ -59,7 +58,7 @@ body {
   object-fit: contain;
 }
 
-/* ===== TÍTULO ===== */
+/* TÍTULO */
 .titulo {
   margin-top: 70px;
   background: #1F3C6E;
@@ -68,21 +67,18 @@ body {
   border-radius: 999px;
   font-weight: 700;
   font-size: clamp(80px, 10vw, 120px);
-  text-align: center;
 }
 
-/* ===== BENEFÍCIO ===== */
+/* BENEFÍCIO */
 .beneficio {
   margin-top: 140px;
   text-align: center;
-  flex-shrink: 0;
 }
 
 .percentual {
   display: flex;
   justify-content: center;
   align-items: flex-end;
-  margin-bottom: 40px; /* 🔥 ESPAÇO EXTRA ENTRE NÚMERO E TEXTO */
 }
 
 .numero {
@@ -96,15 +92,16 @@ body {
   margin-left: 12px;
 }
 
+/* 🔥 AUMENTEI O ESPAÇO AQUI */
 .desconto {
-  margin-top: 0; /* 🔥 REMOVIDO MARGIN NEGATIVO */
+  margin-top: -60px;
   font-weight: 700;
   font-size: clamp(60px, 8vw, 92px);
 }
 
-/* ===== TEXTO ===== */
+/* TEXTO */
 .texto {
-  margin-top: 40px;
+  margin-top: 60px;
   text-align: center;
   font-weight: 400;
   font-size: clamp(36px, 5vw, 56px);
@@ -112,17 +109,16 @@ body {
   line-height: 1.15;
 }
 
-/* ===== LEGAL ===== */
+/* LEGAL */
 .legal {
   margin-top: 80px;
   text-align: center;
   font-size: clamp(24px, 3vw, 36px);
-  font-weight: 400;
   max-width: 1100px;
   line-height: 1.15;
 }
 
-/* ===== RODAPÉ ===== */
+/* RODAPÉ */
 .rodape {
   margin-top: auto;
   margin-bottom: 60px;
@@ -137,7 +133,6 @@ body {
 .segmento-label {
   margin-top: 24px;
   font-size: clamp(24px, 3vw, 36px);
-  font-weight: 400;
 }
 
 .segmento-valor {
@@ -146,7 +141,6 @@ body {
 }
 
 .upper { text-transform: uppercase; }
-
 </style>
 </head>
 
