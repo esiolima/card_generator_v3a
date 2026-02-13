@@ -17,7 +17,7 @@ interface CardData {
   logo?: string;
   cupom?: string;
   texto?: string;
-  valor?: string;
+  valor?: any;
   legal?: string;
   uf?: string;
   segmento?: string;
@@ -31,8 +31,8 @@ interface GenerationProgress {
   currentCard: string;
 }
 
-const upper = (v: string | undefined) =>
-  String(v || "").toUpperCase().trim();
+const upper = (v: any) =>
+  String(v ?? "").toUpperCase().trim();
 
 function imageToBase64(imagePath: string): string {
   if (!fs.existsSync(imagePath)) return "";
@@ -58,6 +58,34 @@ function normalizeType(tipo: string): string {
   return "";
 }
 
+/* =========================================
+   TRATAMENTO CORRETO DE VALOR (%)
+========================================= */
+
+function formatPercentage(valor: any): string {
+  if (valor === null || valor === undefined || valor === "") return "";
+
+  let num = Number(valor);
+
+  if (!isNaN(num)) {
+    // Se vier 0.03 do Excel → vira 3
+    if (num > 0 && num < 1) {
+      num = num * 100;
+    }
+
+    // Remove casas desnecessárias
+    if (Number.isInteger(num)) {
+      return String(num);
+    }
+
+    return String(Number(num.toFixed(2)));
+  }
+
+  // Se vier como string
+  let texto = String(valor).replace(/%+/g, "").trim();
+  return texto;
+}
+
 export class CardGenerator extends EventEmitter {
   private browser: Browser | null = null;
 
@@ -81,7 +109,7 @@ export class CardGenerator extends EventEmitter {
     if (!this.browser) throw new Error("Generator not initialized");
 
     try {
-      const workbook = xlsx.readFile(excelFilePath);
+      const workbook = xlsx.readFile(excelFilePath, { cellDates: false });
       const sheet = workbook.Sheets[workbook.SheetNames[0]];
       const rows = xlsx.utils.sheet_to_json<CardData>(sheet, { defval: "" });
 
@@ -99,62 +127,50 @@ export class CardGenerator extends EventEmitter {
         let html = fs.readFileSync(templatePath, "utf8");
 
         /* =========================
-           LOGO (fallback blank.png)
+           LOGO
         ========================= */
 
         let logoFileName = row.logo?.trim();
-
-        if (!logoFileName) {
-          logoFileName = "blank.png";
-        }
+        if (!logoFileName) logoFileName = "blank.png";
 
         const logoPath = path.join(LOGOS_DIR, logoFileName);
         const logoBase64 = imageToBase64(logoPath);
 
         /* =========================
-           SELO (PNG baseado na coluna selo)
+           SELO
         ========================= */
+
         let seloBase64 = "";
         const seloValue = upper(row.selo);
-        
+
         if (seloValue) {
           let seloFileName = "";
+
           if (seloValue.includes("RENOVADA")) {
             seloFileName = "acaorenovada.png";
           } else if (seloValue.includes("NOVA")) {
             seloFileName = "acaonova.png";
           }
 
-          console.log(`[Selo] Valor na planilha: "${seloValue}", Arquivo identificado: "${seloFileName}"`);
-
           if (seloFileName) {
             const seloPath = path.join(SELOS_DIR, seloFileName);
-            console.log(`[Selo] Caminho completo: ${seloPath}`);
             if (fs.existsSync(seloPath)) {
               seloBase64 = imageToBase64(seloPath);
-              console.log(`[Selo] Imagem convertida para Base64 (tamanho: ${seloBase64.length})`);
-            } else {
-              console.error(`[Selo] ERRO: Arquivo não encontrado em ${seloPath}`);
             }
           }
         }
 
         /* =========================
-           VALOR (REMOVE % SEM ADICIONAR)
+           VALOR
         ========================= */
 
-        let valorFinal = upper(row.valor);
-
-        if (tipo === "cupom" || tipo === "queda" || tipo === "bc") {
-          if (valorFinal) {
-            // Remove TODOS os %
-            valorFinal = valorFinal.replace(/%+/g, "").trim();
-          }
-        }
+        let valorFinal = "";
 
         if (tipo === "promocao") {
-          // PROMO mantém exatamente o que foi digitado (apenas caixa alta)
+          // PROMO = exatamente o que foi digitado
           valorFinal = upper(row.valor);
+        } else {
+          valorFinal = formatPercentage(row.valor);
         }
 
         /* =========================
@@ -168,7 +184,7 @@ export class CardGenerator extends EventEmitter {
         const segmentoFinal = upper(row.segmento);
 
         /* =========================
-           HTML Replace
+           REPLACE HTML
         ========================= */
 
         html = html.replaceAll("{{LOGO}}", logoBase64);
