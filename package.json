@@ -83,6 +83,8 @@
     "vaul": "^1.1.2",
     "wouter": "^3.3.5",
     "xlsx": "^0.18.5",
+    "pdf-lib": "^1.17.1",
+    "@pdf-lib/fontkit": "^1.1.1",
     "zod": "^4.1.12"
   },
   "devDependencies": {
