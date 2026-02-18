@@ -14,6 +14,7 @@ const TMP_DIR = path.resolve("tmp");
 interface CardData {
   ordem?: string;
   tipo: string;
+  categoria: string; // NOVO CAMPO OBRIGATÓRIO
   logo?: string;
   cupom?: string;
   texto?: string;
@@ -33,6 +34,14 @@ interface GenerationProgress {
 
 const upper = (v: any) =>
   String(v ?? "").toUpperCase().trim();
+
+const normalizeCategoryForFile = (categoria: string) =>
+  String(categoria)
+    .toUpperCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s+/g, "_")
+    .trim();
 
 function imageToBase64(imagePath: string): string {
   if (!fs.existsSync(imagePath)) return "";
@@ -58,22 +67,16 @@ function normalizeType(tipo: string): string {
   return "";
 }
 
-/* =========================================
-   TRATAMENTO CORRETO DE VALOR (%)
-========================================= */
-
 function formatPercentage(valor: any): string {
   if (valor === null || valor === undefined || valor === "") return "";
 
   let num = Number(valor);
 
   if (!isNaN(num)) {
-    // Se vier 0.03 do Excel → vira 3
     if (num > 0 && num < 1) {
       num = num * 100;
     }
 
-    // Remove casas desnecessárias
     if (Number.isInteger(num)) {
       return String(num);
     }
@@ -81,7 +84,6 @@ function formatPercentage(valor: any): string {
     return String(Number(num.toFixed(2)));
   }
 
-  // Se vier como string
   let texto = String(valor).replace(/%+/g, "").trim();
   return texto;
 }
@@ -115,7 +117,13 @@ export class CardGenerator extends EventEmitter {
 
       const validRows = rows.filter((row) => {
         const tipo = normalizeType(row.tipo);
-        return tipo && fs.existsSync(path.join(TEMPLATES_DIR, `${tipo}.html`));
+        const categoriaValida = row.categoria && String(row.categoria).trim() !== "";
+
+        return (
+          tipo &&
+          categoriaValida &&
+          fs.existsSync(path.join(TEMPLATES_DIR, `${tipo}.html`))
+        );
       });
 
       const total = validRows.length;
@@ -126,19 +134,14 @@ export class CardGenerator extends EventEmitter {
         const templatePath = path.join(TEMPLATES_DIR, `${tipo}.html`);
         let html = fs.readFileSync(templatePath, "utf8");
 
-        /* =========================
-           LOGO
-        ========================= */
+        const categoriaOriginal = upper(row.categoria);
+        const categoriaArquivo = normalizeCategoryForFile(row.categoria);
 
         let logoFileName = row.logo?.trim();
         if (!logoFileName) logoFileName = "blank.png";
 
         const logoPath = path.join(LOGOS_DIR, logoFileName);
         const logoBase64 = imageToBase64(logoPath);
-
-        /* =========================
-           SELO
-        ========================= */
 
         let seloBase64 = "";
         const seloValue = upper(row.selo);
@@ -160,32 +163,19 @@ export class CardGenerator extends EventEmitter {
           }
         }
 
-        /* =========================
-           VALOR
-        ========================= */
-
         let valorFinal = "";
 
         if (tipo === "promocao") {
-          // PROMO = exatamente o que foi digitado
           valorFinal = upper(row.valor);
         } else {
           valorFinal = formatPercentage(row.valor);
         }
-
-        /* =========================
-           OUTROS CAMPOS
-        ========================= */
 
         const textoFinal = upper(row.texto);
         const cupomFinal = upper(row.cupom);
         const legalFinal = upper(row.legal);
         const ufFinal = upper(row.uf);
         const segmentoFinal = upper(row.segmento);
-
-        /* =========================
-           REPLACE HTML
-        ========================= */
 
         html = html.replaceAll("{{LOGO}}", logoBase64);
         html = html.replaceAll("{{TEXTO}}", textoFinal);
@@ -195,10 +185,6 @@ export class CardGenerator extends EventEmitter {
         html = html.replaceAll("{{UF}}", ufFinal);
         html = html.replaceAll("{{SEGMENTO}}", segmentoFinal);
         html = html.replaceAll("{{SELO}}", seloBase64);
-
-        /* =========================
-           GERAR PDF
-        ========================= */
 
         const tmpHtmlPath = path.join(
           TMP_DIR,
@@ -219,7 +205,7 @@ export class CardGenerator extends EventEmitter {
 
         const pdfPath = path.join(
           OUTPUT_DIR,
-          `${ordem}_${tipoUpper}.pdf`
+          `${ordem}_${tipoUpper}_${categoriaArquivo}.pdf`
         );
 
         await page.pdf({
@@ -287,15 +273,6 @@ export class CardGenerator extends EventEmitter {
       const files = fs.readdirSync(TMP_DIR);
       for (const file of files) {
         fs.unlinkSync(path.join(TMP_DIR, file));
-      }
-    }
-
-    if (fs.existsSync(OUTPUT_DIR)) {
-      const files = fs.readdirSync(OUTPUT_DIR);
-      for (const file of files) {
-        if (file.endsWith(".pdf")) {
-          fs.unlinkSync(path.join(OUTPUT_DIR, file));
-        }
       }
     }
   }
