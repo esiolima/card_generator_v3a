@@ -12,6 +12,7 @@ import { createContext } from "./context";
 import { serveStatic, setupVite } from "./vite";
 import { setupUploadRoute } from "../uploadHandler";
 import { setupLogoUploadRoute } from "../logoUploadHandler";
+import { composeJournal } from "../composer/page-composer"; // 🔥 NOVO IMPORT
 
 function isPortAvailable(port: number): Promise<boolean> {
   return new Promise(resolve => {
@@ -41,12 +42,12 @@ async function startServer() {
       methods: ["GET", "POST"],
     },
   });
-  // Configure body parser with larger size limit for file uploads
+
   app.use(express.json({ limit: "50mb" }));
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
-  // OAuth callback under /api/oauth/callback
+
   registerOAuthRoutes(app);
-  // tRPC API with Socket.io context
+
   app.use(
     "/api/trpc",
     createExpressMiddleware({
@@ -55,7 +56,6 @@ async function startServer() {
     })
   );
 
-  // Socket.io connection handler
   io.on("connection", (socket) => {
     console.log(`Client connected: ${socket.id}`);
 
@@ -69,18 +69,27 @@ async function startServer() {
     });
   });
 
-  // Setup upload route
   setupUploadRoute(app);
-  // Setup logo upload route
   setupLogoUploadRoute(app);
-  // development mode uses Vite, production mode uses static files
+
+  // 🔥 NOVA ROTA PARA GERAR JORNAL
+  app.post("/api/gerar-jornal", async (req, res) => {
+    try {
+      const filePath = await composeJournal();
+
+      res.download(filePath, "jornal_final.pdf");
+    } catch (error: any) {
+      console.error("Erro ao gerar jornal:", error);
+      res.status(500).json({ error: "Erro ao gerar jornal" });
+    }
+  });
+
   if (process.env.NODE_ENV === "development") {
     await setupVite(app, server);
   } else {
     serveStatic(app);
   }
 
-  // Cleanup old files on startup
   const uploadsDir = path.resolve("uploads");
   const outputDir = path.resolve("output");
   const tmpDir = path.resolve("tmp");
@@ -91,9 +100,7 @@ async function startServer() {
       for (const file of files) {
         try {
           fs.unlinkSync(path.join(dir, file));
-        } catch (e) {
-          // Ignore cleanup errors
-        }
+        } catch (e) {}
       }
     }
   }
