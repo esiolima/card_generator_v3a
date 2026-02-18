@@ -12,7 +12,7 @@ import { createContext } from "./context";
 import { serveStatic, setupVite } from "./vite";
 import { setupUploadRoute } from "../uploadHandler";
 import { setupLogoUploadRoute } from "../logoUploadHandler";
-import { composeJournal } from "../composer/page-composer"; // 🔥 NOVO IMPORT
+import { composeJournal } from "../../composer/page-composer"; // ✅ CAMINHO CORRETO
 
 function isPortAvailable(port: number): Promise<boolean> {
   return new Promise(resolve => {
@@ -72,11 +72,10 @@ async function startServer() {
   setupUploadRoute(app);
   setupLogoUploadRoute(app);
 
-  // 🔥 NOVA ROTA PARA GERAR JORNAL
+  // ✅ ROTA PARA GERAR O JORNAL
   app.post("/api/gerar-jornal", async (req, res) => {
     try {
       const filePath = await composeJournal();
-
       res.download(filePath, "jornal_final.pdf");
     } catch (error: any) {
       console.error("Erro ao gerar jornal:", error);
@@ -100,7 +99,9 @@ async function startServer() {
       for (const file of files) {
         try {
           fs.unlinkSync(path.join(dir, file));
-        } catch (e) {}
+        } catch (e) {
+          // Ignora erros de limpeza
+        }
       }
     }
   }
