@@ -26,7 +26,6 @@ interface ProgressData {
 export default function CardGenerator() {
   const [file, setFile] = useState<File | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [isGeneratingJournal, setIsGeneratingJournal] = useState(false);
   const [progress, setProgress] = useState<ProgressData | null>(null);
   const [zipPath, setZipPath] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -34,33 +33,19 @@ export default function CardGenerator() {
     `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
   );
   const [isDark, setIsDark] = useState(true);
-  const [isDragging, setIsDragging] = useState(false);
   const socketRef = useRef<Socket | null>(null);
   const [, setLocation] = useLocation();
 
   const generateCardsMutation = trpc.card.generateCards.useMutation();
 
   useEffect(() => {
-    const socket = io({
-      reconnection: true,
-      reconnectionDelay: 1000,
-      reconnectionDelayMax: 5000,
-      reconnectionAttempts: 5
-    });
-
-    socket.on("connect", () => {
-      socket.emit("join", sessionId);
-    });
-
-    socket.on("progress", (data: ProgressData) => {
-      setProgress(data);
-    });
-
+    const socket = io();
+    socket.on("connect", () => socket.emit("join", sessionId));
+    socket.on("progress", (data: ProgressData) => setProgress(data));
     socket.on("error", (message: string) => {
       setError(message);
       setIsProcessing(false);
     });
-
     socketRef.current = socket;
     return () => socket.disconnect();
   }, [sessionId]);
@@ -68,7 +53,7 @@ export default function CardGenerator() {
   const handleFileSelect = (selectedFile: File | null | undefined) => {
     if (!selectedFile) return;
     if (!selectedFile.name.endsWith(".xlsx")) {
-      setError("Por favor, selecione um arquivo .xlsx válido");
+      setError("Selecione um arquivo .xlsx válido");
       return;
     }
     setFile(selectedFile);
@@ -78,14 +63,10 @@ export default function CardGenerator() {
   };
 
   const handleUpload = async () => {
-    if (!file) {
-      setError("Selecione um arquivo primeiro.");
-      return;
-    }
+    if (!file) return;
 
     setIsProcessing(true);
     setError(null);
-    setProgress(null);
     setZipPath(null);
 
     try {
@@ -94,25 +75,21 @@ export default function CardGenerator() {
 
       const uploadResponse = await fetch("/api/upload", {
         method: "POST",
-        body: formData
+        body: formData,
       });
-
-      if (!uploadResponse.ok) {
-        throw new Error("Erro ao fazer upload");
-      }
 
       const { filePath } = await uploadResponse.json();
 
       const result = await generateCardsMutation.mutateAsync({
         filePath,
-        sessionId
+        sessionId,
       });
 
       if (result.success) {
         setZipPath(result.zipPath);
       }
-    } catch (err) {
-      setError("Erro ao processar planilha.");
+    } catch {
+      setError("Erro ao processar planilha");
     } finally {
       setIsProcessing(false);
     }
@@ -121,35 +98,44 @@ export default function CardGenerator() {
   const handleDownload = async () => {
     if (!zipPath) return;
 
-    const response = await fetch(
-      `/api/download?zipPath=${encodeURIComponent(zipPath)}`
-    );
+    try {
+      const response = await fetch(
+        `/api/download?zipPath=${encodeURIComponent(zipPath)}`
+      );
 
-    const blob = await response.blob();
-    const url = window.URL.createObjectURL(blob);
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
 
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "cards.zip";
-    document.body.appendChild(a);
-    a.click();
+      const contentDisposition =
+        response.headers.get("content-disposition");
 
-    window.URL.revokeObjectURL(url);
-    document.body.removeChild(a);
+      let fileName = "download.zip";
+
+      if (contentDisposition) {
+        const match = contentDisposition.match(/filename="?([^"]+)"?/);
+        if (match?.[1]) fileName = match[1];
+      }
+
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = fileName;
+      document.body.appendChild(a);
+      a.click();
+
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch {
+      setError("Erro ao baixar arquivo");
+    }
   };
 
   const handleGenerateJournal = async () => {
-    setIsGeneratingJournal(true);
-    setError(null);
-
     try {
       const response = await fetch("/api/gerar-jornal", {
-        method: "POST"
+        method: "POST",
       });
 
-      if (!response.ok) {
-        throw new Error("Erro ao gerar jornal");
-      }
+      if (!response.ok) throw new Error();
 
       const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
@@ -162,10 +148,8 @@ export default function CardGenerator() {
 
       window.URL.revokeObjectURL(url);
       document.body.removeChild(a);
-    } catch (err) {
+    } catch {
       setError("Erro ao gerar jornal.");
-    } finally {
-      setIsGeneratingJournal(false);
     }
   };
 
@@ -181,62 +165,97 @@ export default function CardGenerator() {
   const textSecondary = isDark ? "text-slate-300" : "text-slate-600";
 
   return (
-    <div className={`min-h-screen py-12 px-4 transition-colors duration-500 ${bgColor}`}>
-      <div className="max-w-5xl mx-auto">
-        <div className="flex items-center justify-between mb-16">
-          <h1 className={`text-3xl font-bold ${textPrimary}`}>
-            Gerador de Cards
-          </h1>
-          <button
-            onClick={() => setIsDark(!isDark)}
-            className="p-3 rounded-full bg-white/10"
-          >
-            {isDark ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
+    <div className={`min-h-screen py-12 px-6 ${bgColor}`}>
+      <div className="max-w-6xl mx-auto">
+        <div className="flex justify-between items-center mb-12">
+          <div>
+            <h1 className={`text-3xl font-bold ${textPrimary}`}>
+              Gerador de Cards
+            </h1>
+            <p className={`text-sm ${textSecondary}`}>
+              Núcleo de Comunicação e Marketing / Trade Martins
+            </p>
+          </div>
+          <button onClick={() => setIsDark(!isDark)}>
+            {isDark ? <Sun /> : <Moon />}
           </button>
         </div>
 
-        <div className={`${cardBg} rounded-2xl p-8 shadow-2xl`}>
-          {!isProcessing && !zipPath && (
-            <>
-              <input
-                type="file"
-                accept=".xlsx"
-                onChange={(e) => handleFileSelect(e.target.files?.[0])}
-                className="mb-4"
-              />
-              <Button onClick={handleUpload}>
-                Processar Planilha
-              </Button>
-            </>
-          )}
+        <div className="grid lg:grid-cols-3 gap-8">
+          <div className="lg:col-span-2">
+            <div className={`${cardBg} rounded-2xl p-8 shadow-2xl`}>
+              
+              {!zipPath && (
+                <>
+                  <h2 className={`text-2xl font-bold mb-2 ${textPrimary}`}>
+                    Transforme suas Planilhas
+                  </h2>
+                  <p className={textSecondary}>
+                    Converta dados Excel em cards PDF profissionais em segundos
+                  </p>
 
-          {isProcessing && progress && (
-            <div className="space-y-4">
-              <Progress value={progress.percentage} />
-              <p>{progress.processed} de {progress.total}</p>
+                  <div className="mt-6">
+                    <input
+                      type="file"
+                      accept=".xlsx"
+                      onChange={(e) =>
+                        handleFileSelect(e.target.files?.[0])
+                      }
+                    />
+                  </div>
+
+                  <Button
+                    onClick={handleUpload}
+                    className="mt-6 w-full"
+                  >
+                    Processar Planilha
+                  </Button>
+                </>
+              )}
+
+              {isProcessing && progress && (
+                <div className="mt-6">
+                  <Progress value={progress.percentage} />
+                </div>
+              )}
+
+              {zipPath && (
+                <div className="mt-8 space-y-4">
+                  <Button
+                    onClick={handleDownload}
+                    className="w-full flex items-center justify-center gap-2"
+                  >
+                    <Download size={18} />
+                    Baixar Cards (ZIP)
+                  </Button>
+
+                  <Button
+                    onClick={handleGenerateJournal}
+                    className="w-full flex items-center justify-center gap-2"
+                  >
+                    <FileText size={18} />
+                    Gerar Jornal Diagramado
+                  </Button>
+                </div>
+              )}
+
+              {error && (
+                <p className="text-red-400 mt-4">
+                  {error}
+                </p>
+              )}
             </div>
-          )}
+          </div>
 
-          {!isProcessing && zipPath && (
-            <div className="space-y-4">
-              <Button onClick={handleDownload}>
-                Baixar Cards (ZIP)
-              </Button>
-
-              <Button
-                onClick={handleGenerateJournal}
-                disabled={isGeneratingJournal}
-              >
-                {isGeneratingJournal
-                  ? "Gerando Jornal..."
-                  : "Gerar Jornal Diagramado"}
-              </Button>
-            </div>
-          )}
-
-          {error && (
-            <p className="text-red-500 mt-4">{error}</p>
-          )}
+          <div>
+            <Button
+              onClick={() => setLocation("/logos")}
+              className="w-full bg-purple-600 text-white"
+            >
+              <Image className="mr-2" size={18} />
+              Gerenciar Logos
+            </Button>
+          </div>
         </div>
 
         <div className="mt-16 text-center text-sm text-gray-400">
