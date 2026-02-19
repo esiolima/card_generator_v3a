@@ -8,13 +8,22 @@ import { EventEmitter } from "events";
 const OUTPUT_DIR = path.join(process.cwd(), "output");
 const TMP_DIR = path.join(process.cwd(), "tmp");
 const TEMPLATES_DIR = path.join(process.cwd(), "templates");
+const SELOS_DIR = path.join(process.cwd(), "selos");
+const LOGOS_DIR = path.join(process.cwd(), "logos");
 
 interface CardData {
   ordem?: string;
   tipo: string;
   texto?: string;
   valor?: any;
+  complemento?: string;
+  legal?: string;
+  uf?: string;
+  segmento?: string;
+  cupom?: string;
+  selo?: string;
   categoria?: string;
+  urn?: string;
 }
 
 interface GenerationProgress {
@@ -50,6 +59,17 @@ function normalizeType(tipo: string): string {
   if (normalized === "bc") return "bc";
 
   return "";
+}
+
+function upper(value: any): string {
+  return String(value ?? "").toUpperCase().trim();
+}
+
+function imageToBase64(imagePath: string): string {
+  if (!fs.existsSync(imagePath)) return "";
+  const ext = path.extname(imagePath).replace(".", "");
+  const buffer = fs.readFileSync(imagePath);
+  return `data:image/${ext};base64,${buffer.toString("base64")}`;
 }
 
 export class CardGenerator extends EventEmitter {
@@ -91,8 +111,36 @@ export class CardGenerator extends EventEmitter {
       const templatePath = path.join(TEMPLATES_DIR, `${tipo}.html`);
       let html = fs.readFileSync(templatePath, "utf8");
 
-      html = html.replaceAll("{{TEXTO}}", String(row.texto ?? ""));
+      // 🔹 LOGO
+      const logoPath = path.join(LOGOS_DIR, row.segmento || "");
+      const logoBase64 = imageToBase64(logoPath);
+      html = html.replaceAll("{{LOGO}}", logoBase64);
+
+      // 🔹 SELO
+      let seloBase64 = "";
+      if (row.selo) {
+        const seloFile =
+          row.selo.toLowerCase() === "nova"
+            ? "nova.png"
+            : row.selo.toLowerCase() === "renovada"
+            ? "renovada.png"
+            : "";
+
+        if (seloFile) {
+          seloBase64 = imageToBase64(path.join(SELOS_DIR, seloFile));
+        }
+      }
+      html = html.replaceAll("{{SELO}}", seloBase64);
+
+      // 🔹 TEXTOS
+      html = html.replaceAll("{{TEXTO}}", upper(row.texto));
       html = html.replaceAll("{{VALOR}}", String(row.valor ?? ""));
+      html = html.replaceAll("{{COMPLEMENTO}}", upper(row.complemento));
+      html = html.replaceAll("{{LEGAL}}", upper(row.legal));
+      html = html.replaceAll("{{UF}}", upper(row.uf));
+      html = html.replaceAll("{{SEGMENTO}}", upper(row.segmento));
+      html = html.replaceAll("{{CUPOM}}", upper(row.cupom));
+      html = html.replaceAll("{{URN}}", upper(row.urn));
 
       const tmpHtmlPath = path.join(TMP_DIR, `card_${processed + 1}.html`);
       fs.writeFileSync(tmpHtmlPath, html);
