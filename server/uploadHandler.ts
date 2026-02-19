@@ -33,15 +33,14 @@ const uploadExcel = multer({
 });
 
 /* =========================
-   UPLOAD LOGO (SEM ALTERAR NOME)
+   UPLOAD LOGO
 ========================= */
 
 const logoStorage = multer.diskStorage({
   destination: (req, file, cb) => {
-    cb(null, LOGOS_DIR); // usa pasta existente
+    cb(null, LOGOS_DIR);
   },
   filename: (req, file, cb) => {
-    // salva exatamente com nome original
     cb(null, file.originalname);
   },
 });
@@ -85,7 +84,7 @@ export function setupUploadRoute(app: express.Application) {
     }
   );
 
-  // Upload logo (nome original preservado)
+  // Upload logo
   app.post(
     "/api/upload-logo",
     uploadLogo.single("logo"),
@@ -101,7 +100,7 @@ export function setupUploadRoute(app: express.Application) {
     }
   );
 
-  // Download ZIP
+  // 🔥 DOWNLOAD ZIP (CORRIGIDO)
   app.get("/api/download", (req: Request, res: Response) => {
     const { zipPath } = req.query;
 
@@ -120,6 +119,9 @@ export function setupUploadRoute(app: express.Application) {
       return res.status(404).json({ error: "File not found" });
     }
 
-    res.download(resolvedPath, "cards.zip");
+    // 🔥 pega o nome real do arquivo
+    const fileName = path.basename(resolvedPath);
+
+    res.download(resolvedPath, fileName);
   });
 }
