@@ -7,9 +7,13 @@ import { EventEmitter } from "events";
 
 const TEMPLATES_DIR = path.resolve("templates");
 const LOGOS_DIR = path.resolve("logos");
-const SELOS_DIR = path.join(process.cwd(), "selos");
+const SELOS_DIR = path.resolve("selos");
 const OUTPUT_DIR = path.resolve("output");
 const TMP_DIR = path.resolve("tmp");
+
+/* =========================
+   TYPES
+========================= */
 
 interface CardData {
   ordem?: string;
@@ -32,9 +36,12 @@ interface GenerationProgress {
   currentCard: string;
 }
 
+/* =========================
+   UTILS
+========================= */
+
 function getTimestampFileName(): string {
   const now = new Date();
-
   const pad = (n: number) => n.toString().padStart(2, "0");
 
   const date = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
@@ -87,14 +94,19 @@ function formatPercentage(valor: any): string {
     return String(Number(num.toFixed(2)));
   }
 
-  let texto = String(valor).replace(/%+/g, "").trim();
-  return texto;
+  return String(valor).replace(/%+/g, "").trim();
 }
 
+/* =========================
+   CLASS
+========================= */
+
 export class CardGenerator extends EventEmitter {
+
   private browser: Browser | null = null;
 
   async initialize() {
+
     if (!fs.existsSync(OUTPUT_DIR))
       fs.mkdirSync(OUTPUT_DIR, { recursive: true });
 
@@ -111,6 +123,7 @@ export class CardGenerator extends EventEmitter {
     excelFilePath: string,
     onProgress?: (progress: GenerationProgress) => void
   ): Promise<string> {
+
     if (!this.browser) throw new Error("Generator not initialized");
 
     const workbook = xlsx.readFile(excelFilePath, { cellDates: false });
@@ -126,17 +139,27 @@ export class CardGenerator extends EventEmitter {
     let processed = 0;
 
     for (const row of validRows) {
+
       const tipo = normalizeType(row.tipo);
       const templatePath = path.join(TEMPLATES_DIR, `${tipo}.html`);
       let html = fs.readFileSync(templatePath, "utf8");
 
-      const textoFinal = upper(row.texto);
-      const valorFinal = tipo === "promocao"
-        ? upper(row.valor)
-        : formatPercentage(row.valor);
+      /* =========================
+         REPLACE FIELDS
+      ========================= */
 
-      html = html.replaceAll("{{TEXTO}}", textoFinal);
+      html = html.replaceAll("{{TEXTO}}", upper(row.texto));
+
+      const valorFinal =
+        tipo === "promocao"
+          ? upper(row.valor)
+          : formatPercentage(row.valor);
+
       html = html.replaceAll("{{VALOR}}", valorFinal);
+
+      /* =========================
+         TEMP HTML
+      ========================= */
 
       const tmpHtmlPath = path.join(TMP_DIR, `card_${processed + 1}.html`);
       fs.writeFileSync(tmpHtmlPath, html, "utf8");
@@ -148,8 +171,12 @@ export class CardGenerator extends EventEmitter {
         waitUntil: "networkidle0",
       });
 
+      /* =========================
+         FILE NAME
+      ========================= */
+
       const ordem = String(row.ordem || processed + 1).trim();
-      const categoriaFinal = upper(row.categoria);
+      const categoriaFinal = upper(row.categoria || "SEM_CATEGORIA");
 
       const pdfName = `${ordem}_${tipo.toUpperCase()}_${categoriaFinal}.pdf`;
       const pdfPath = path.join(OUTPUT_DIR, pdfName);
@@ -167,22 +194,20 @@ export class CardGenerator extends EventEmitter {
 
       const percentage = Math.round((processed / total) * 100);
 
-      if (onProgress) {
-        onProgress({
-          total,
-          processed,
-          percentage,
-          currentCard: `${processed}/${total}`,
-        });
-      }
-
-      this.emit("progress", {
+      const progressData: GenerationProgress = {
         total,
         processed,
         percentage,
         currentCard: `${processed}/${total}`,
-      });
+      };
+
+      if (onProgress) onProgress(progressData);
+      this.emit("progress", progressData);
     }
+
+    /* =========================
+       CREATE ZIP
+    ========================= */
 
     const zipName = getTimestampFileName();
     const zipPath = path.join(OUTPUT_DIR, zipName);
@@ -193,18 +218,21 @@ export class CardGenerator extends EventEmitter {
   }
 
   private async createZip(sourceDir: string, zipPath: string): Promise<void> {
+
     return new Promise((resolve, reject) => {
+
       const output = fs.createWriteStream(zipPath);
       const archive = archiver("zip", { zlib: { level: 9 } });
 
       output.on("close", () => resolve());
-      archive.on("error", (err: Error) => reject(err));
+      archive.on("error", (err) => reject(err));
 
       archive.pipe(output);
 
       const files = fs.readdirSync(sourceDir);
+
       for (const file of files) {
-        if (file.endsWith(".pdf")) {
+        if (file.endsWith(".pdf") && file !== "jornal_final.pdf") {
           archive.file(path.join(sourceDir, file), { name: file });
         }
       }
