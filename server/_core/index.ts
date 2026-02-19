@@ -12,7 +12,7 @@ import { createContext } from "./context";
 import { serveStatic, setupVite } from "./vite";
 import { setupUploadRoute } from "../uploadHandler";
 import { setupLogoUploadRoute } from "../logoUploadHandler";
-import { composeJournal } from "../../composer/page-composer"; // ✅ CAMINHO CORRETO
+import { composeJournal } from "../../composer/page-composer";
 
 function isPortAvailable(port: number): Promise<boolean> {
   return new Promise(resolve => {
@@ -34,8 +34,10 @@ async function findAvailablePort(startPort: number = 3000): Promise<number> {
 }
 
 async function startServer() {
+
   const app = express();
   const server = createServer(app);
+
   const io = new SocketIOServer(server, {
     cors: {
       origin: "*",
@@ -72,38 +74,45 @@ async function startServer() {
   setupUploadRoute(app);
   setupLogoUploadRoute(app);
 
-  // ✅ ROTA PARA GERAR O JORNAL
+  /* =========================
+     GERAR JORNAL
+  ========================= */
+
   app.post("/api/gerar-jornal", async (req, res) => {
     try {
       const filePath = await composeJournal();
-      res.download(filePath, "jornal_final.pdf");
+      res.download(filePath);
     } catch (error: any) {
       console.error("Erro ao gerar jornal:", error);
       res.status(500).json({ error: "Erro ao gerar jornal" });
     }
   });
 
-  if (process.env.NODE_ENV === "development") {
-    await setupVite(app, server);
-  } else {
-    serveStatic(app);
-  }
+  /* =========================
+     NÃO LIMPAR OUTPUT NO STARTUP
+     (apenas uploads e tmp)
+  ========================= */
 
   const uploadsDir = path.resolve("uploads");
-  const outputDir = path.resolve("output");
   const tmpDir = path.resolve("tmp");
 
-  for (const dir of [uploadsDir, outputDir, tmpDir]) {
+  for (const dir of [uploadsDir, tmpDir]) {
     if (fs.existsSync(dir)) {
       const files = fs.readdirSync(dir);
       for (const file of files) {
         try {
           fs.unlinkSync(path.join(dir, file));
-        } catch (e) {
-          // Ignora erros de limpeza
+        } catch {
+          // ignora erro
         }
       }
     }
+  }
+
+  if (process.env.NODE_ENV === "development") {
+    await setupVite(app, server);
+  } else {
+    serveStatic(app);
   }
 
   const preferredPort = parseInt(process.env.PORT || "3000");
