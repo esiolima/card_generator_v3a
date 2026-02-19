@@ -7,6 +7,7 @@ const OUTPUT_DIR = path.resolve("output");
 const FONT_PATH = path.resolve("fonts/Inter-Bold.ttf");
 
 const PAGE_WIDTH = 3360;
+
 const CARD_TARGET_WIDTH = 1000;
 const ORIGINAL_CARD_WIDTH = 1400;
 const ORIGINAL_CARD_HEIGHT = 2115;
@@ -21,6 +22,10 @@ const TARJA_WIDTH = 3160;
 const TARJA_HEIGHT = 240;
 const TARJA_RADIUS = 120;
 const TARJA_FONT_SIZE = 115;
+
+/* =========================
+   UTIL
+========================= */
 
 function getCategoryFromFile(fileName: string): string {
   const parts = fileName.replace(".pdf", "").split("_");
@@ -51,6 +56,7 @@ function generateUniqueColor(used: Set<string>) {
     const b = b1 + m;
 
     const key = `${r}-${g}-${b}`;
+
     if (!used.has(key)) {
       used.add(key);
       return { r, g, b };
@@ -58,28 +64,26 @@ function generateUniqueColor(used: Set<string>) {
   }
 }
 
+/* =========================
+   COMPOSE JOURNAL
+========================= */
+
 export async function composeJournal(): Promise<string> {
 
-  console.log("===== DEBUG JOURNAL START =====");
+  console.log("===== JOURNAL START =====");
   console.log("Working directory:", process.cwd());
 
-  try {
-    console.log("Arquivos na pasta output:");
-    console.log(fs.readdirSync(OUTPUT_DIR));
-  } catch (e) {
-    console.log("Erro ao ler pasta output:", e);
+  if (!fs.existsSync(OUTPUT_DIR)) {
+    throw new Error("Pasta output não encontrada.");
   }
 
-  console.log("Fonte existe?", fs.existsSync(FONT_PATH));
-  console.log("Caminho fonte:", FONT_PATH);
-  console.log("===== DEBUG JOURNAL END =====");
+  const allFiles = fs.readdirSync(OUTPUT_DIR);
+  console.log("Arquivos encontrados:", allFiles);
 
-  const files = fs
-    .readdirSync(OUTPUT_DIR)
+  const files = allFiles
     .filter(
       (f) =>
         f.endsWith(".pdf") &&
-        f !== "cards.zip" &&
         f !== "jornal_final.pdf"
     )
     .sort((a, b) => {
@@ -91,6 +95,14 @@ export async function composeJournal(): Promise<string> {
   if (!files.length) {
     throw new Error("Nenhum card encontrado na pasta output.");
   }
+
+  if (!fs.existsSync(FONT_PATH)) {
+    throw new Error("Fonte Inter-Bold.ttf não encontrada em /fonts.");
+  }
+
+  /* =========================
+     AGRUPAR POR CATEGORIA
+  ========================= */
 
   const grouped: Record<string, string[]> = {};
 
@@ -104,12 +116,12 @@ export async function composeJournal(): Promise<string> {
     grouped[category].push(file);
   }
 
+  /* =========================
+     CRIAR PDF FINAL
+  ========================= */
+
   const pdfDoc = await PDFDocument.create();
   pdfDoc.registerFontkit(fontkit);
-
-  if (!fs.existsSync(FONT_PATH)) {
-    throw new Error("Fonte Inter-Bold.ttf não encontrada.");
-  }
 
   const fontBytes = fs.readFileSync(FONT_PATH);
   const interBold = await pdfDoc.embedFont(fontBytes);
@@ -135,6 +147,10 @@ export async function composeJournal(): Promise<string> {
 
     let y = pageHeight - MARGIN;
 
+    /* =========================
+       TARJA
+    ========================= */
+
     const color = generateUniqueColor(usedColors);
 
     page.drawRoundedRectangle({
@@ -158,6 +174,10 @@ export async function composeJournal(): Promise<string> {
     });
 
     y -= TARJA_HEIGHT + GAP;
+
+    /* =========================
+       CARDS
+    ========================= */
 
     let column = 0;
 
@@ -189,6 +209,9 @@ export async function composeJournal(): Promise<string> {
   const finalPath = path.join(OUTPUT_DIR, "jornal_final.pdf");
   const pdfBytes = await pdfDoc.save();
   fs.writeFileSync(finalPath, pdfBytes);
+
+  console.log("Jornal gerado com sucesso:", finalPath);
+  console.log("===== JOURNAL END =====");
 
   return finalPath;
 }
