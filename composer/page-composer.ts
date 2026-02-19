@@ -60,9 +60,28 @@ function generateUniqueColor(used: Set<string>) {
 
 export async function composeJournal(): Promise<string> {
 
+  console.log("===== DEBUG JOURNAL START =====");
+  console.log("Working directory:", process.cwd());
+
+  try {
+    console.log("Arquivos na pasta output:");
+    console.log(fs.readdirSync(OUTPUT_DIR));
+  } catch (e) {
+    console.log("Erro ao ler pasta output:", e);
+  }
+
+  console.log("Fonte existe?", fs.existsSync(FONT_PATH));
+  console.log("Caminho fonte:", FONT_PATH);
+  console.log("===== DEBUG JOURNAL END =====");
+
   const files = fs
     .readdirSync(OUTPUT_DIR)
-    .filter((f) => f.endsWith(".pdf") && f !== "cards.zip" && f !== "jornal_final.pdf")
+    .filter(
+      (f) =>
+        f.endsWith(".pdf") &&
+        f !== "cards.zip" &&
+        f !== "jornal_final.pdf"
+    )
     .sort((a, b) => {
       const aNum = parseInt(a.split("_")[0]);
       const bNum = parseInt(b.split("_")[0]);
@@ -70,10 +89,9 @@ export async function composeJournal(): Promise<string> {
     });
 
   if (!files.length) {
-    throw new Error("Nenhum card encontrado.");
+    throw new Error("Nenhum card encontrado na pasta output.");
   }
 
-  // 🔥 AGRUPAR POR CATEGORIA
   const grouped: Record<string, string[]> = {};
 
   for (const file of files) {
@@ -88,6 +106,10 @@ export async function composeJournal(): Promise<string> {
 
   const pdfDoc = await PDFDocument.create();
   pdfDoc.registerFontkit(fontkit);
+
+  if (!fs.existsSync(FONT_PATH)) {
+    throw new Error("Fonte Inter-Bold.ttf não encontrada.");
+  }
 
   const fontBytes = fs.readFileSync(FONT_PATH);
   const interBold = await pdfDoc.embedFont(fontBytes);
