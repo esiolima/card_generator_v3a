@@ -34,6 +34,7 @@ export default function CardGenerator() {
     `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
   );
   const [isDark, setIsDark] = useState(true);
+  const [isDragging, setIsDragging] = useState(false);
   const socketRef = useRef<Socket | null>(null);
   const [, setLocation] = useLocation();
 
@@ -61,9 +62,20 @@ export default function CardGenerator() {
     });
 
     socketRef.current = socket;
-
     return () => socket.disconnect();
   }, [sessionId]);
+
+  const handleFileSelect = (selectedFile: File | null | undefined) => {
+    if (!selectedFile) return;
+    if (!selectedFile.name.endsWith(".xlsx")) {
+      setError("Por favor, selecione um arquivo .xlsx válido");
+      return;
+    }
+    setFile(selectedFile);
+    setError(null);
+    setZipPath(null);
+    setProgress(null);
+  };
 
   const handleUpload = async () => {
     if (!file) {
@@ -100,7 +112,7 @@ export default function CardGenerator() {
         setZipPath(result.zipPath);
       }
     } catch (err) {
-      setError("Erro ao processar arquivo.");
+      setError("Erro ao processar planilha.");
     } finally {
       setIsProcessing(false);
     }
@@ -128,6 +140,7 @@ export default function CardGenerator() {
 
   const handleGenerateJournal = async () => {
     setIsGeneratingJournal(true);
+    setError(null);
 
     try {
       const response = await fetch("/api/gerar-jornal", {
@@ -149,58 +162,86 @@ export default function CardGenerator() {
 
       window.URL.revokeObjectURL(url);
       document.body.removeChild(a);
-    } catch {
+    } catch (err) {
       setError("Erro ao gerar jornal.");
     } finally {
       setIsGeneratingJournal(false);
     }
   };
 
+  const bgColor = isDark
+    ? "bg-gradient-to-br from-gray-900 via-blue-950 to-purple-950"
+    : "bg-gradient-to-br from-slate-100 via-blue-100 to-purple-100";
+
+  const cardBg = isDark
+    ? "bg-white/10 backdrop-blur-lg border border-white/20"
+    : "bg-white/50 backdrop-blur-lg border border-white/80";
+
+  const textPrimary = isDark ? "text-white" : "text-slate-900";
+  const textSecondary = isDark ? "text-slate-300" : "text-slate-600";
+
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-900 text-white p-8">
-      <div className="w-full max-w-xl bg-gray-800 p-8 rounded-2xl shadow-xl">
-        <h1 className="text-2xl font-bold mb-6">Gerador de Cards</h1>
+    <div className={`min-h-screen py-12 px-4 transition-colors duration-500 ${bgColor}`}>
+      <div className="max-w-5xl mx-auto">
+        <div className="flex items-center justify-between mb-16">
+          <h1 className={`text-3xl font-bold ${textPrimary}`}>
+            Gerador de Cards
+          </h1>
+          <button
+            onClick={() => setIsDark(!isDark)}
+            className="p-3 rounded-full bg-white/10"
+          >
+            {isDark ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
+          </button>
+        </div>
 
-        {!isProcessing && !zipPath && (
-          <>
-            <input
-              type="file"
-              accept=".xlsx"
-              onChange={(e) => setFile(e.target.files?.[0] || null)}
-              className="mb-4"
-            />
-            <Button onClick={handleUpload}>
-              Processar Planilha
-            </Button>
-          </>
-        )}
+        <div className={`${cardBg} rounded-2xl p-8 shadow-2xl`}>
+          {!isProcessing && !zipPath && (
+            <>
+              <input
+                type="file"
+                accept=".xlsx"
+                onChange={(e) => handleFileSelect(e.target.files?.[0])}
+                className="mb-4"
+              />
+              <Button onClick={handleUpload}>
+                Processar Planilha
+              </Button>
+            </>
+          )}
 
-        {isProcessing && (
-          <div className="mt-4">
-            <Progress value={progress?.percentage || 0} />
-          </div>
-        )}
+          {isProcessing && progress && (
+            <div className="space-y-4">
+              <Progress value={progress.percentage} />
+              <p>{progress.processed} de {progress.total}</p>
+            </div>
+          )}
 
-        {!isProcessing && zipPath && (
-          <div className="mt-6 space-y-4">
-            <Button onClick={handleDownload}>
-              Baixar Cards (ZIP)
-            </Button>
+          {!isProcessing && zipPath && (
+            <div className="space-y-4">
+              <Button onClick={handleDownload}>
+                Baixar Cards (ZIP)
+              </Button>
 
-            <Button
-              onClick={handleGenerateJournal}
-              disabled={isGeneratingJournal}
-            >
-              {isGeneratingJournal
-                ? "Gerando Jornal..."
-                : "Gerar Jornal Diagramado"}
-            </Button>
-          </div>
-        )}
+              <Button
+                onClick={handleGenerateJournal}
+                disabled={isGeneratingJournal}
+              >
+                {isGeneratingJournal
+                  ? "Gerando Jornal..."
+                  : "Gerar Jornal Diagramado"}
+              </Button>
+            </div>
+          )}
 
-        {error && (
-          <p className="text-red-400 mt-4">{error}</p>
-        )}
+          {error && (
+            <p className="text-red-500 mt-4">{error}</p>
+          )}
+        </div>
+
+        <div className="mt-16 text-center text-sm text-gray-400">
+          Desenvolvido por Esio Lima - Versão 3.0
+        </div>
       </div>
     </div>
   );
