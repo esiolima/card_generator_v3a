@@ -5,23 +5,15 @@ import archiver from "archiver";
 import xlsx from "xlsx";
 import { EventEmitter } from "events";
 
-const TEMPLATES_DIR = path.resolve("templates");
-const LOGOS_DIR = path.resolve("logos");
-const SELOS_DIR = path.join(process.cwd(), "selos");
-const OUTPUT_DIR = path.resolve("output");
-const TMP_DIR = path.resolve("tmp");
+const OUTPUT_DIR = path.join(process.cwd(), "output");
+const TMP_DIR = path.join(process.cwd(), "tmp");
+const TEMPLATES_DIR = path.join(process.cwd(), "templates");
 
 interface CardData {
   ordem?: string;
   tipo: string;
-  logo?: string;
-  cupom?: string;
   texto?: string;
   valor?: any;
-  legal?: string;
-  uf?: string;
-  segmento?: string;
-  selo?: string;
   categoria?: string;
 }
 
@@ -32,27 +24,21 @@ interface GenerationProgress {
   currentCard: string;
 }
 
-/* =========================
-   UTIL
-========================= */
-
 function getTimestampFileName(): string {
   const now = new Date();
   const pad = (n: number) => n.toString().padStart(2, "0");
 
-  const date = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
-  const time = `${pad(now.getHours())}-${pad(now.getMinutes())}-${pad(now.getSeconds())}`;
-
-  return `${date}_${time}.zip`;
+  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(
+    now.getDate()
+  )}_${pad(now.getHours())}-${pad(now.getMinutes())}-${pad(
+    now.getSeconds()
+  )}.zip`;
 }
-
-const upper = (v: any) =>
-  String(v ?? "").toUpperCase().trim();
 
 function normalizeType(tipo: string): string {
   if (!tipo) return "";
 
-  let normalized = String(tipo)
+  const normalized = String(tipo)
     .toLowerCase()
     .trim()
     .normalize("NFD")
@@ -66,36 +52,10 @@ function normalizeType(tipo: string): string {
   return "";
 }
 
-function formatPercentage(valor: any): string {
-  if (valor === null || valor === undefined || valor === "") return "";
-
-  let num = Number(valor);
-
-  if (!isNaN(num)) {
-    if (num > 0 && num < 1) {
-      num = num * 100;
-    }
-
-    if (Number.isInteger(num)) {
-      return String(num);
-    }
-
-    return String(Number(num.toFixed(2)));
-  }
-
-  return String(valor).replace(/%+/g, "").trim();
-}
-
-/* =========================
-   GENERATOR
-========================= */
-
 export class CardGenerator extends EventEmitter {
-
   private browser: Browser | null = null;
 
   async initialize() {
-
     if (!fs.existsSync(OUTPUT_DIR))
       fs.mkdirSync(OUTPUT_DIR, { recursive: true });
 
@@ -108,29 +68,13 @@ export class CardGenerator extends EventEmitter {
     });
   }
 
-  /* =========================
-     GERA CARDS
-  ========================= */
-
   async generateCards(
     excelFilePath: string,
     onProgress?: (progress: GenerationProgress) => void
   ): Promise<string> {
+    if (!this.browser) throw new Error("Generator not initialized");
 
-    if (!this.browser)
-      throw new Error("Generator not initialized");
-
-    /* 🔥 LIMPA PDFs ANTIGOS (SUBSTITUIR) */
-    if (fs.existsSync(OUTPUT_DIR)) {
-      const files = fs.readdirSync(OUTPUT_DIR);
-      for (const file of files) {
-        if (file.endsWith(".pdf")) {
-          fs.unlinkSync(path.join(OUTPUT_DIR, file));
-        }
-      }
-    }
-
-    const workbook = xlsx.readFile(excelFilePath, { cellDates: false });
+    const workbook = xlsx.readFile(excelFilePath);
     const sheet = workbook.Sheets[workbook.SheetNames[0]];
     const rows = xlsx.utils.sheet_to_json<CardData>(sheet, { defval: "" });
 
@@ -143,34 +87,29 @@ export class CardGenerator extends EventEmitter {
     let processed = 0;
 
     for (const row of validRows) {
-
       const tipo = normalizeType(row.tipo);
       const templatePath = path.join(TEMPLATES_DIR, `${tipo}.html`);
       let html = fs.readFileSync(templatePath, "utf8");
 
-      const textoFinal = upper(row.texto);
-      const valorFinal =
-        tipo === "promocao"
-          ? upper(row.valor)
-          : formatPercentage(row.valor);
-
-      html = html.replaceAll("{{TEXTO}}", textoFinal);
-      html = html.replaceAll("{{VALOR}}", valorFinal);
+      html = html.replaceAll("{{TEXTO}}", String(row.texto ?? ""));
+      html = html.replaceAll("{{VALOR}}", String(row.valor ?? ""));
 
       const tmpHtmlPath = path.join(TMP_DIR, `card_${processed + 1}.html`);
-      fs.writeFileSync(tmpHtmlPath, html, "utf8");
+      fs.writeFileSync(tmpHtmlPath, html);
 
       const page = await this.browser.newPage();
       await page.setViewport({ width: 1400, height: 2115 });
 
-      await page.goto(`file://${path.resolve(tmpHtmlPath)}`, {
+      await page.goto(`file://${tmpHtmlPath}`, {
         waitUntil: "networkidle0",
       });
 
       const ordem = String(row.ordem || processed + 1).trim();
-      const categoriaFinal = upper(row.categoria);
+      const categoria = String(row.categoria || "SEM_CATEGORIA")
+        .toUpperCase()
+        .replace(/\s+/g, "_");
 
-      const pdfName = `${ordem}_${tipo.toUpperCase()}_${categoriaFinal}.pdf`;
+      const pdfName = `${ordem}_${tipo.toUpperCase()}_${categoria}.pdf`;
       const pdfPath = path.join(OUTPUT_DIR, pdfName);
 
       await page.pdf({
@@ -203,39 +142,29 @@ export class CardGenerator extends EventEmitter {
       });
     }
 
-    /* =========================
-       GERA ZIP (NÃO APAGA PDFs)
-    ========================= */
-
     const zipName = getTimestampFileName();
     const zipPath = path.join(OUTPUT_DIR, zipName);
 
-    await this.createZip(OUTPUT_DIR, zipPath);
+    await this.createZip(zipPath);
 
     return zipPath;
   }
 
-  /* =========================
-     ZIP
-  ========================= */
-
-  private async createZip(sourceDir: string, zipPath: string): Promise<void> {
-
+  private async createZip(zipPath: string): Promise<void> {
     return new Promise((resolve, reject) => {
-
       const output = fs.createWriteStream(zipPath);
       const archive = archiver("zip", { zlib: { level: 9 } });
 
       output.on("close", () => resolve());
-      archive.on("error", (err: Error) => reject(err));
+      archive.on("error", reject);
 
       archive.pipe(output);
 
-      const files = fs.readdirSync(sourceDir);
+      const files = fs.readdirSync(OUTPUT_DIR);
 
       for (const file of files) {
         if (file.endsWith(".pdf")) {
-          archive.file(path.join(sourceDir, file), { name: file });
+          archive.file(path.join(OUTPUT_DIR, file), { name: file });
         }
       }
 
