@@ -21,11 +21,15 @@ function extractCategory(file: string): string {
   return parts.slice(2).join(" ");
 }
 
+function extractOrder(file: string): number {
+  return parseInt(file.split("_")[0]) || 0;
+}
+
 export async function composeJournal(): Promise<string> {
   const files = fs
     .readdirSync(OUTPUT_DIR)
-    .filter((f) => f.endsWith(".pdf"))
-    .sort((a, b) => parseInt(a) - parseInt(b));
+    .filter((f) => f.endsWith(".pdf") && f !== "jornal_final.pdf")
+    .sort((a, b) => extractOrder(a) - extractOrder(b));
 
   if (!files.length) {
     throw new Error("Nenhum card encontrado.");
@@ -37,16 +41,22 @@ export async function composeJournal(): Promise<string> {
   const fontBytes = fs.readFileSync(FONT_PATH);
   const font = await pdfDoc.embedFont(fontBytes);
 
-  let currentCategory = "";
   let page = pdfDoc.addPage([PAGE_WIDTH, 5000]);
   let y = page.getHeight() - MARGIN;
 
-  for (let i = 0; i < files.length; i++) {
-    const file = files[i];
+  let currentCategory = "";
+  let column = 0;
+
+  for (const file of files) {
     const categoria = extractCategory(file);
 
     if (categoria !== currentCategory) {
       currentCategory = categoria;
+
+      if (y < CARD_HEIGHT + TARJA_HEIGHT + 500) {
+        page = pdfDoc.addPage([PAGE_WIDTH, 5000]);
+        y = page.getHeight() - MARGIN;
+      }
 
       page.drawRoundedRectangle({
         x: MARGIN,
@@ -54,15 +64,13 @@ export async function composeJournal(): Promise<string> {
         width: PAGE_WIDTH - MARGIN * 2,
         height: TARJA_HEIGHT,
         borderRadius: TARJA_RADIUS,
-        color: rgb(0.1, 0.3, 0.8),
+        color: rgb(0.15, 0.35, 0.85),
       });
 
-      const textWidth = font.widthOfTextAtSize(
-        categoria.toUpperCase(),
-        TARJA_FONT_SIZE
-      );
+      const text = categoria.toUpperCase();
+      const textWidth = font.widthOfTextAtSize(text, TARJA_FONT_SIZE);
 
-      page.drawText(categoria.toUpperCase(), {
+      page.drawText(text, {
         x: MARGIN + (PAGE_WIDTH - MARGIN * 2 - textWidth) / 2,
         y: y - TARJA_HEIGHT / 2 - 40,
         size: TARJA_FONT_SIZE,
@@ -71,6 +79,7 @@ export async function composeJournal(): Promise<string> {
       });
 
       y -= TARJA_HEIGHT + GAP;
+      column = 0;
     }
 
     const cardBytes = fs.readFileSync(path.join(OUTPUT_DIR, file));
@@ -78,14 +87,19 @@ export async function composeJournal(): Promise<string> {
     const [cardPage] = await pdfDoc.copyPages(cardPdf, [0]);
     const embedded = await pdfDoc.embedPage(cardPage);
 
+    const x = MARGIN + column * (CARD_WIDTH + GAP);
+
     page.drawPage(embedded, {
-      x: MARGIN + (i % 3) * (CARD_WIDTH + GAP),
+      x,
       y: y - CARD_HEIGHT,
       width: CARD_WIDTH,
       height: CARD_HEIGHT,
     });
 
-    if ((i + 1) % 3 === 0) {
+    column++;
+
+    if (column === 3) {
+      column = 0;
       y -= CARD_HEIGHT + GAP;
     }
   }
