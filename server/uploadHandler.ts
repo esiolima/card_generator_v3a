@@ -5,6 +5,7 @@ import fs from "fs";
 
 const UPLOAD_DIR = path.resolve("uploads");
 const LOGOS_DIR = path.resolve("logos");
+const OUTPUT_DIR = path.resolve("output");
 
 /* =========================
    UPLOAD PLANILHA (.xlsx)
@@ -100,7 +101,7 @@ export function setupUploadRoute(app: express.Application) {
     }
   );
 
-  // 🔥 DOWNLOAD ZIP (CORRIGIDO)
+  // Download ZIP
   app.get("/api/download", (req: Request, res: Response) => {
     const { zipPath } = req.query;
 
@@ -108,10 +109,9 @@ export function setupUploadRoute(app: express.Application) {
       return res.status(400).json({ error: "Invalid zip path" });
     }
 
-    const outputDir = path.resolve("output");
     const resolvedPath = path.resolve(zipPath);
 
-    if (!resolvedPath.startsWith(outputDir)) {
+    if (!resolvedPath.startsWith(OUTPUT_DIR)) {
       return res.status(403).json({ error: "Access denied" });
     }
 
@@ -119,9 +119,26 @@ export function setupUploadRoute(app: express.Application) {
       return res.status(404).json({ error: "File not found" });
     }
 
-    // 🔥 pega o nome real do arquivo
-    const fileName = path.basename(resolvedPath);
+    res.download(resolvedPath);
+  });
 
-    res.download(resolvedPath, fileName);
+  // 🔥 ROTA DE DIAGNÓSTICO
+  app.get("/api/debug-output", (req: Request, res: Response) => {
+    try {
+      if (!fs.existsSync(OUTPUT_DIR)) {
+        return res.json({ exists: false, files: [] });
+      }
+
+      const files = fs.readdirSync(OUTPUT_DIR);
+
+      res.json({
+        exists: true,
+        count: files.length,
+        files,
+      });
+
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
   });
 }
