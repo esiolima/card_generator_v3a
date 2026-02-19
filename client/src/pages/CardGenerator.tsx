@@ -1,5 +1,3 @@
-// 🔥 CÓDIGO COMPLETO RESTAURADO + BOTÃO NOVO
-
 import { useState, useRef, useEffect } from "react";
 import { io, Socket } from "socket.io-client";
 import { useLocation } from "wouter";
@@ -36,38 +34,43 @@ export default function CardGenerator() {
     `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
   );
   const [isDark, setIsDark] = useState(true);
-  const [isDragging, setIsDragging] = useState(false);
   const socketRef = useRef<Socket | null>(null);
   const [, setLocation] = useLocation();
 
   const generateCardsMutation = trpc.card.generateCards.useMutation();
 
   useEffect(() => {
-    const socket = io();
-    socket.on("connect", () => socket.emit("join", sessionId));
-    socket.on("progress", (data: ProgressData) => setProgress(data));
+    const socket = io({
+      reconnection: true,
+      reconnectionDelay: 1000,
+      reconnectionDelayMax: 5000,
+      reconnectionAttempts: 5
+    });
+
+    socket.on("connect", () => {
+      socket.emit("join", sessionId);
+    });
+
+    socket.on("progress", (data: ProgressData) => {
+      setProgress(data);
+    });
+
     socket.on("error", (message: string) => {
       setError(message);
       setIsProcessing(false);
     });
+
     socketRef.current = socket;
+
     return () => socket.disconnect();
   }, [sessionId]);
 
-  const handleFileSelect = (selectedFile: File | null | undefined) => {
-    if (!selectedFile) return;
-    if (!selectedFile.name.endsWith(".xlsx")) {
-      setError("Selecione um arquivo .xlsx válido");
+  const handleUpload = async () => {
+    if (!file) {
+      setError("Selecione um arquivo primeiro.");
       return;
     }
-    setFile(selectedFile);
-    setError(null);
-    setZipPath(null);
-    setProgress(null);
-  };
 
-  const handleUpload = async () => {
-    if (!file) return;
     setIsProcessing(true);
     setError(null);
     setProgress(null);
@@ -82,8 +85,9 @@ export default function CardGenerator() {
         body: formData
       });
 
-      if (!uploadResponse.ok)
-        throw new Error("Erro no upload");
+      if (!uploadResponse.ok) {
+        throw new Error("Erro ao fazer upload");
+      }
 
       const { filePath } = await uploadResponse.json();
 
@@ -92,9 +96,11 @@ export default function CardGenerator() {
         sessionId
       });
 
-      if (result.success) setZipPath(result.zipPath);
+      if (result.success) {
+        setZipPath(result.zipPath);
+      }
     } catch (err) {
-      setError("Erro ao processar planilha");
+      setError("Erro ao processar arquivo.");
     } finally {
       setIsProcessing(false);
     }
@@ -122,10 +128,15 @@ export default function CardGenerator() {
 
   const handleGenerateJournal = async () => {
     setIsGeneratingJournal(true);
+
     try {
       const response = await fetch("/api/gerar-jornal", {
         method: "POST"
       });
+
+      if (!response.ok) {
+        throw new Error("Erro ao gerar jornal");
+      }
 
       const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
@@ -139,82 +150,57 @@ export default function CardGenerator() {
       window.URL.revokeObjectURL(url);
       document.body.removeChild(a);
     } catch {
-      setError("Erro ao gerar jornal");
+      setError("Erro ao gerar jornal.");
     } finally {
       setIsGeneratingJournal(false);
     }
   };
 
-  const bgColor = isDark
-    ? "bg-gradient-to-br from-gray-900 via-blue-950 to-purple-950"
-    : "bg-gradient-to-br from-slate-100 via-blue-100 to-purple-100";
-
-  const cardBg = isDark
-    ? "bg-white/10 backdrop-blur-lg border border-white/20"
-    : "bg-white/50 backdrop-blur-lg border border-white/80";
-
-  const textPrimary = isDark ? "text-white" : "text-slate-900";
-
   return (
-    <div className={`min-h-screen py-12 px-4 ${bgColor}`}>
-      <div className="max-w-4xl mx-auto">
-        <div className={`${cardBg} rounded-2xl p-8 shadow-2xl`}>
-          <h1 className={`text-3xl font-bold mb-6 ${textPrimary}`}>
-            Gerador de Cards
-          </h1>
+    <div className="min-h-screen flex items-center justify-center bg-gray-900 text-white p-8">
+      <div className="w-full max-w-xl bg-gray-800 p-8 rounded-2xl shadow-xl">
+        <h1 className="text-2xl font-bold mb-6">Gerador de Cards</h1>
 
-          {!isProcessing && !zipPath && (
-            <>
-              <input
-                type="file"
-                accept=".xlsx"
-                onChange={(e) =>
-                  handleFileSelect(e.target.files?.[0])
-                }
-                className="mb-4"
-              />
-              <Button onClick={handleUpload}>
-                Processar Planilha
-              </Button>
-            </>
-          )}
+        {!isProcessing && !zipPath && (
+          <>
+            <input
+              type="file"
+              accept=".xlsx"
+              onChange={(e) => setFile(e.target.files?.[0] || null)}
+              className="mb-4"
+            />
+            <Button onClick={handleUpload}>
+              Processar Planilha
+            </Button>
+          </>
+        )}
 
-          {isProcessing && (
-            <div className="mt-6">
-              <Progress value={progress?.percentage || 0} />
-            </div>
-          )}
+        {isProcessing && (
+          <div className="mt-4">
+            <Progress value={progress?.percentage || 0} />
+          </div>
+        )}
 
-          {!isProcessing && zipPath && (
-            <div className="mt-6 space-y-4">
-              <Button onClick={handleDownload}>
-                <Download className="mr-2 w-4 h-4" />
-                Baixar Cards (ZIP)
-              </Button>
+        {!isProcessing && zipPath && (
+          <div className="mt-6 space-y-4">
+            <Button onClick={handleDownload}>
+              Baixar Cards (ZIP)
+            </Button>
 
-              <Button
-                onClick={handleGenerateJournal}
-                disabled={isGeneratingJournal}
-              >
-                {isGeneratingJournal ? (
-                  <>
-                    <Hourglass className="mr-2 w-4 h-4 animate-spin" />
-                    Gerando Jornal...
-                  </>
-                ) : (
-                  <>
-                    <FileText className="mr-2 w-4 h-4" />
-                    Gerar Jornal Diagramado
-                  </>
-                )}
-              </Button>
-            </div>
-          )}
+            <Button
+              onClick={handleGenerateJournal}
+              disabled={isGeneratingJournal}
+            >
+              {isGeneratingJournal
+                ? "Gerando Jornal..."
+                : "Gerar Jornal Diagramado"}
+            </Button>
+          </div>
+        )}
 
-          {error && (
-            <p className="text-red-500 mt-4">{error}</p>
-          )}
-        </div>
+        {error && (
+          <p className="text-red-400 mt-4">{error}</p>
+        )}
       </div>
     </div>
   );
