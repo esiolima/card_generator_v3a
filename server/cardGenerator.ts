@@ -7,13 +7,9 @@ import { EventEmitter } from "events";
 
 const TEMPLATES_DIR = path.resolve("templates");
 const LOGOS_DIR = path.resolve("logos");
-const SELOS_DIR = path.resolve("selos");
+const SELOS_DIR = path.join(process.cwd(), "selos");
 const OUTPUT_DIR = path.resolve("output");
 const TMP_DIR = path.resolve("tmp");
-
-/* =========================
-   TYPES
-========================= */
 
 interface CardData {
   ordem?: string;
@@ -37,7 +33,7 @@ interface GenerationProgress {
 }
 
 /* =========================
-   UTILS
+   UTIL
 ========================= */
 
 function getTimestampFileName(): string {
@@ -52,13 +48,6 @@ function getTimestampFileName(): string {
 
 const upper = (v: any) =>
   String(v ?? "").toUpperCase().trim();
-
-function imageToBase64(imagePath: string): string {
-  if (!fs.existsSync(imagePath)) return "";
-  const ext = path.extname(imagePath).replace(".", "");
-  const buffer = fs.readFileSync(imagePath);
-  return `data:image/${ext};base64,${buffer.toString("base64")}`;
-}
 
 function normalizeType(tipo: string): string {
   if (!tipo) return "";
@@ -98,7 +87,7 @@ function formatPercentage(valor: any): string {
 }
 
 /* =========================
-   CLASS
+   GENERATOR
 ========================= */
 
 export class CardGenerator extends EventEmitter {
@@ -119,12 +108,27 @@ export class CardGenerator extends EventEmitter {
     });
   }
 
+  /* =========================
+     GERA CARDS
+  ========================= */
+
   async generateCards(
     excelFilePath: string,
     onProgress?: (progress: GenerationProgress) => void
   ): Promise<string> {
 
-    if (!this.browser) throw new Error("Generator not initialized");
+    if (!this.browser)
+      throw new Error("Generator not initialized");
+
+    /* 🔥 LIMPA PDFs ANTIGOS (SUBSTITUIR) */
+    if (fs.existsSync(OUTPUT_DIR)) {
+      const files = fs.readdirSync(OUTPUT_DIR);
+      for (const file of files) {
+        if (file.endsWith(".pdf")) {
+          fs.unlinkSync(path.join(OUTPUT_DIR, file));
+        }
+      }
+    }
 
     const workbook = xlsx.readFile(excelFilePath, { cellDates: false });
     const sheet = workbook.Sheets[workbook.SheetNames[0]];
@@ -144,22 +148,14 @@ export class CardGenerator extends EventEmitter {
       const templatePath = path.join(TEMPLATES_DIR, `${tipo}.html`);
       let html = fs.readFileSync(templatePath, "utf8");
 
-      /* =========================
-         REPLACE FIELDS
-      ========================= */
-
-      html = html.replaceAll("{{TEXTO}}", upper(row.texto));
-
+      const textoFinal = upper(row.texto);
       const valorFinal =
         tipo === "promocao"
           ? upper(row.valor)
           : formatPercentage(row.valor);
 
+      html = html.replaceAll("{{TEXTO}}", textoFinal);
       html = html.replaceAll("{{VALOR}}", valorFinal);
-
-      /* =========================
-         TEMP HTML
-      ========================= */
 
       const tmpHtmlPath = path.join(TMP_DIR, `card_${processed + 1}.html`);
       fs.writeFileSync(tmpHtmlPath, html, "utf8");
@@ -171,12 +167,8 @@ export class CardGenerator extends EventEmitter {
         waitUntil: "networkidle0",
       });
 
-      /* =========================
-         FILE NAME
-      ========================= */
-
       const ordem = String(row.ordem || processed + 1).trim();
-      const categoriaFinal = upper(row.categoria || "SEM_CATEGORIA");
+      const categoriaFinal = upper(row.categoria);
 
       const pdfName = `${ordem}_${tipo.toUpperCase()}_${categoriaFinal}.pdf`;
       const pdfPath = path.join(OUTPUT_DIR, pdfName);
@@ -194,19 +186,25 @@ export class CardGenerator extends EventEmitter {
 
       const percentage = Math.round((processed / total) * 100);
 
-      const progressData: GenerationProgress = {
+      if (onProgress) {
+        onProgress({
+          total,
+          processed,
+          percentage,
+          currentCard: `${processed}/${total}`,
+        });
+      }
+
+      this.emit("progress", {
         total,
         processed,
         percentage,
         currentCard: `${processed}/${total}`,
-      };
-
-      if (onProgress) onProgress(progressData);
-      this.emit("progress", progressData);
+      });
     }
 
     /* =========================
-       CREATE ZIP
+       GERA ZIP (NÃO APAGA PDFs)
     ========================= */
 
     const zipName = getTimestampFileName();
@@ -217,6 +215,10 @@ export class CardGenerator extends EventEmitter {
     return zipPath;
   }
 
+  /* =========================
+     ZIP
+  ========================= */
+
   private async createZip(sourceDir: string, zipPath: string): Promise<void> {
 
     return new Promise((resolve, reject) => {
@@ -225,14 +227,14 @@ export class CardGenerator extends EventEmitter {
       const archive = archiver("zip", { zlib: { level: 9 } });
 
       output.on("close", () => resolve());
-      archive.on("error", (err) => reject(err));
+      archive.on("error", (err: Error) => reject(err));
 
       archive.pipe(output);
 
       const files = fs.readdirSync(sourceDir);
 
       for (const file of files) {
-        if (file.endsWith(".pdf") && file !== "jornal_final.pdf") {
+        if (file.endsWith(".pdf")) {
           archive.file(path.join(sourceDir, file), { name: file });
         }
       }
