@@ -14,7 +14,6 @@ const TMP_DIR = path.resolve("tmp");
 interface CardData {
   ordem?: string;
   tipo: string;
-  categoria: string; // NOVO CAMPO OBRIGATÓRIO
   logo?: string;
   cupom?: string;
   texto?: string;
@@ -23,6 +22,7 @@ interface CardData {
   uf?: string;
   segmento?: string;
   selo?: string;
+  categoria?: string;
 }
 
 interface GenerationProgress {
@@ -32,16 +32,19 @@ interface GenerationProgress {
   currentCard: string;
 }
 
+function getTimestampFileName(): string {
+  const now = new Date();
+
+  const pad = (n: number) => n.toString().padStart(2, "0");
+
+  const date = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+  const time = `${pad(now.getHours())}-${pad(now.getMinutes())}-${pad(now.getSeconds())}`;
+
+  return `${date}_${time}.zip`;
+}
+
 const upper = (v: any) =>
   String(v ?? "").toUpperCase().trim();
-
-const normalizeCategoryForFile = (categoria: string) =>
-  String(categoria)
-    .toUpperCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/\s+/g, "_")
-    .trim();
 
 function imageToBase64(imagePath: string): string {
   if (!fs.existsSync(imagePath)) return "";
@@ -110,127 +113,62 @@ export class CardGenerator extends EventEmitter {
   ): Promise<string> {
     if (!this.browser) throw new Error("Generator not initialized");
 
-    try {
-      const workbook = xlsx.readFile(excelFilePath, { cellDates: false });
-      const sheet = workbook.Sheets[workbook.SheetNames[0]];
-      const rows = xlsx.utils.sheet_to_json<CardData>(sheet, { defval: "" });
+    const workbook = xlsx.readFile(excelFilePath, { cellDates: false });
+    const sheet = workbook.Sheets[workbook.SheetNames[0]];
+    const rows = xlsx.utils.sheet_to_json<CardData>(sheet, { defval: "" });
 
-      const validRows = rows.filter((row) => {
-        const tipo = normalizeType(row.tipo);
-        const categoriaValida = row.categoria && String(row.categoria).trim() !== "";
+    const validRows = rows.filter((row) => {
+      const tipo = normalizeType(row.tipo);
+      return tipo && fs.existsSync(path.join(TEMPLATES_DIR, `${tipo}.html`));
+    });
 
-        return (
-          tipo &&
-          categoriaValida &&
-          fs.existsSync(path.join(TEMPLATES_DIR, `${tipo}.html`))
-        );
+    const total = validRows.length;
+    let processed = 0;
+
+    for (const row of validRows) {
+      const tipo = normalizeType(row.tipo);
+      const templatePath = path.join(TEMPLATES_DIR, `${tipo}.html`);
+      let html = fs.readFileSync(templatePath, "utf8");
+
+      const textoFinal = upper(row.texto);
+      const valorFinal = tipo === "promocao"
+        ? upper(row.valor)
+        : formatPercentage(row.valor);
+
+      html = html.replaceAll("{{TEXTO}}", textoFinal);
+      html = html.replaceAll("{{VALOR}}", valorFinal);
+
+      const tmpHtmlPath = path.join(TMP_DIR, `card_${processed + 1}.html`);
+      fs.writeFileSync(tmpHtmlPath, html, "utf8");
+
+      const page = await this.browser.newPage();
+      await page.setViewport({ width: 1400, height: 2115 });
+
+      await page.goto(`file://${path.resolve(tmpHtmlPath)}`, {
+        waitUntil: "networkidle0",
       });
 
-      const total = validRows.length;
-      let processed = 0;
+      const ordem = String(row.ordem || processed + 1).trim();
+      const categoriaFinal = upper(row.categoria);
 
-      for (const row of validRows) {
-        const tipo = normalizeType(row.tipo);
-        const templatePath = path.join(TEMPLATES_DIR, `${tipo}.html`);
-        let html = fs.readFileSync(templatePath, "utf8");
+      const pdfName = `${ordem}_${tipo.toUpperCase()}_${categoriaFinal}.pdf`;
+      const pdfPath = path.join(OUTPUT_DIR, pdfName);
 
-        const categoriaOriginal = upper(row.categoria);
-        const categoriaArquivo = normalizeCategoryForFile(row.categoria);
+      await page.pdf({
+        path: pdfPath,
+        width: "1400px",
+        height: "2115px",
+        printBackground: true,
+      });
 
-        let logoFileName = row.logo?.trim();
-        if (!logoFileName) logoFileName = "blank.png";
+      await page.close();
 
-        const logoPath = path.join(LOGOS_DIR, logoFileName);
-        const logoBase64 = imageToBase64(logoPath);
+      processed++;
 
-        let seloBase64 = "";
-        const seloValue = upper(row.selo);
+      const percentage = Math.round((processed / total) * 100);
 
-        if (seloValue) {
-          let seloFileName = "";
-
-          if (seloValue.includes("RENOVADA")) {
-            seloFileName = "acaorenovada.png";
-          } else if (seloValue.includes("NOVA")) {
-            seloFileName = "acaonova.png";
-          }
-
-          if (seloFileName) {
-            const seloPath = path.join(SELOS_DIR, seloFileName);
-            if (fs.existsSync(seloPath)) {
-              seloBase64 = imageToBase64(seloPath);
-            }
-          }
-        }
-
-        let valorFinal = "";
-
-        if (tipo === "promocao") {
-          valorFinal = upper(row.valor);
-        } else {
-          valorFinal = formatPercentage(row.valor);
-        }
-
-        const textoFinal = upper(row.texto);
-        const cupomFinal = upper(row.cupom);
-        const legalFinal = upper(row.legal);
-        const ufFinal = upper(row.uf);
-        const segmentoFinal = upper(row.segmento);
-
-        html = html.replaceAll("{{LOGO}}", logoBase64);
-        html = html.replaceAll("{{TEXTO}}", textoFinal);
-        html = html.replaceAll("{{VALOR}}", valorFinal);
-        html = html.replaceAll("{{CUPOM}}", cupomFinal);
-        html = html.replaceAll("{{LEGAL}}", legalFinal);
-        html = html.replaceAll("{{UF}}", ufFinal);
-        html = html.replaceAll("{{SEGMENTO}}", segmentoFinal);
-        html = html.replaceAll("{{SELO}}", seloBase64);
-
-        const tmpHtmlPath = path.join(
-          TMP_DIR,
-          `card_${processed + 1}.html`
-        );
-
-        fs.writeFileSync(tmpHtmlPath, html, "utf8");
-
-        const page = await this.browser.newPage();
-        await page.setViewport({ width: 1400, height: 2115 });
-
-        await page.goto(`file://${path.resolve(tmpHtmlPath)}`, {
-          waitUntil: "networkidle0",
-        });
-
-        const ordem = String(row.ordem || processed + 1).trim();
-        const tipoUpper = tipo.toUpperCase();
-
-        const pdfPath = path.join(
-          OUTPUT_DIR,
-          `${ordem}_${tipoUpper}_${categoriaArquivo}.pdf`
-        );
-
-        await page.pdf({
-          path: pdfPath,
-          width: "1400px",
-          height: "2115px",
-          printBackground: true,
-        });
-
-        await page.close();
-
-        processed++;
-
-        const percentage = Math.round((processed / total) * 100);
-
-        if (onProgress) {
-          onProgress({
-            total,
-            processed,
-            percentage,
-            currentCard: `${processed}/${total}`,
-          });
-        }
-
-        this.emit("progress", {
+      if (onProgress) {
+        onProgress({
           total,
           processed,
           percentage,
@@ -238,13 +176,20 @@ export class CardGenerator extends EventEmitter {
         });
       }
 
-      const zipPath = path.join(OUTPUT_DIR, "cards.zip");
-      await this.createZip(OUTPUT_DIR, zipPath);
-
-      return zipPath;
-    } finally {
-      this.cleanup();
+      this.emit("progress", {
+        total,
+        processed,
+        percentage,
+        currentCard: `${processed}/${total}`,
+      });
     }
+
+    const zipName = getTimestampFileName();
+    const zipPath = path.join(OUTPUT_DIR, zipName);
+
+    await this.createZip(OUTPUT_DIR, zipPath);
+
+    return zipPath;
   }
 
   private async createZip(sourceDir: string, zipPath: string): Promise<void> {
@@ -266,15 +211,6 @@ export class CardGenerator extends EventEmitter {
 
       archive.finalize();
     });
-  }
-
-  private cleanup() {
-    if (fs.existsSync(TMP_DIR)) {
-      const files = fs.readdirSync(TMP_DIR);
-      for (const file of files) {
-        fs.unlinkSync(path.join(TMP_DIR, file));
-      }
-    }
   }
 
   async close() {
